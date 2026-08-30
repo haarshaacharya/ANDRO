@@ -4,6 +4,8 @@ from pathlib import Path
 
 from tools.files import find_files
 from tools.system import open_app
+from tools.voice import listen
+from tools.speaker import speak
 from tools.git_tools import (
     is_git_repository,
     git_status,
@@ -17,17 +19,47 @@ console = Console()
 # Current ANDRO project folder
 PROJECT_PATH = Path(__file__).parent.resolve()
 
+
+# ---------------------------------
+# ANDRO SPEAK FUNCTION
+# ---------------------------------
+
+def andro_say(text):
+    """Print and speak ANDRO's response."""
+
+    text = str(text)
+
+    console.print(
+        f"\n[bold cyan]ANDRO >[/bold cyan] {text}\n"
+    )
+
+    speak(text)
+
+
+# ---------------------------------
+# AI SYSTEM PROMPT
+# ---------------------------------
+
 SYSTEM_PROMPT = """
 You are ANDRO, a powerful personal AI assistant.
 
 You help the user with programming, projects, planning,
-files, Git, and computer-related tasks.
+files, Git, applications, and computer-related tasks.
 
-You can search files and open applications.
+You can:
+- Search files
+- Open applications
+- Help with Git and GitHub
+- Answer programming questions
+- Help with projects
 
-Be helpful and concise.
+Be helpful, concise, and friendly.
 """
 
+
+# ---------------------------------
+# FILE SEARCH COMMAND
+# ---------------------------------
 
 def search_query_from_command(command):
     """Extract a file search query from common commands."""
@@ -45,7 +77,9 @@ def search_query_from_command(command):
     ]
 
     for keyword in keywords:
+
         if keyword in command_lower:
+
             query = command_lower.split(keyword, 1)[1].strip()
 
             for word in [
@@ -65,6 +99,10 @@ def search_query_from_command(command):
     return None
 
 
+# ---------------------------------
+# OPEN APP COMMAND
+# ---------------------------------
+
 def app_name_from_command(command):
     """Extract app name from an open command."""
 
@@ -79,7 +117,9 @@ def app_name_from_command(command):
     ]
 
     for prefix in prefixes:
+
         if command_lower.startswith(prefix):
+
             app_name = command_lower[len(prefix):].strip()
 
             for word in [
@@ -95,6 +135,10 @@ def app_name_from_command(command):
 
     return None
 
+
+# ---------------------------------
+# GIT COMMAND DETECTION
+# ---------------------------------
 
 def get_git_command(command):
     """Detect simple Git commands."""
@@ -119,6 +163,7 @@ def get_git_command(command):
 
     # Commit command
     if command_lower.startswith("commit "):
+
         message = command[len("commit "):].strip()
 
         if message:
@@ -137,23 +182,61 @@ def get_git_command(command):
     return None
 
 
+# ---------------------------------
+# PRINT GIT RESULT
+# ---------------------------------
+
 def print_git_result(title, result):
-    """Print Git tool results nicely."""
+    """Print Git tool results and speak them."""
 
     if result["success"]:
-        console.print(f"\n[bold green]✅ {title}[/bold green]")
-        console.print(f"[cyan]{result['message']}[/cyan]\n")
-    else:
-        console.print(f"\n[bold red]❌ {title} failed[/bold red]")
-        console.print(f"[red]{result['message']}[/red]\n")
 
+        console.print(
+            f"\n[bold green]✅ {title}[/bold green]"
+        )
+
+        console.print(
+            f"[cyan]{result['message']}[/cyan]\n"
+        )
+
+        speak(result["message"])
+
+    else:
+
+        console.print(
+            f"\n[bold red]❌ {title} failed[/bold red]"
+        )
+
+        console.print(
+            f"[red]{result['message']}[/red]\n"
+        )
+
+        speak(result["message"])
+
+
+# ---------------------------------
+# START ANDRO
+# ---------------------------------
 
 console.print("[bold cyan]🤖 ANDRO is online![/bold cyan]")
-console.print("[yellow]Type 'exit' to close ANDRO.[/yellow]")
+
+console.print(
+    "[yellow]Type 'exit' to close ANDRO.[/yellow]"
+)
+
+console.print(
+    "[yellow]Type 'voice' to speak to ANDRO.[/yellow]"
+)
+
 console.print(
     "[yellow]Git commands: git status, stage changes, "
     "commit <message>, push to GitHub[/yellow]\n"
 )
+
+
+# ---------------------------------
+# AI MEMORY
+# ---------------------------------
 
 messages = [
     {
@@ -162,22 +245,71 @@ messages = [
     }
 ]
 
+
 # Push confirmation state
 waiting_for_push_confirmation = False
 
 
+# ---------------------------------
+# MAIN LOOP
+# ---------------------------------
+
 while True:
 
-    user_input = console.input("[bold green]YOU > [/bold green]")
+    user_input = console.input(
+        "[bold green]YOU > [/bold green]"
+    )
+
     command_lower = user_input.lower().strip()
+
+
+    # ---------------------------------
+    # VOICE INPUT
+    # ---------------------------------
+
+    if command_lower == "voice":
+
+        voice_result = listen()
+
+        if voice_result["success"]:
+
+            user_input = voice_result["text"]
+
+            console.print(
+                f"\n[bold magenta]🎤 YOU SAID > "
+                f"{user_input}[/bold magenta]\n"
+            )
+
+            command_lower = user_input.lower().strip()
+
+        else:
+
+            console.print(
+                f"\n[bold red]❌ ANDRO: "
+                f"{voice_result['message']}[/bold red]\n"
+            )
+
+            speak(voice_result["message"])
+
+            continue
+
 
     # ---------------------------------
     # EXIT
     # ---------------------------------
 
     if command_lower in ["exit", "quit", "bye"]:
-        console.print("\n[bold red]ANDRO: Goodbye! 👋[/bold red]")
+
+        goodbye_message = "Goodbye! See you soon."
+
+        console.print(
+            "\n[bold red]ANDRO: Goodbye! 👋[/bold red]"
+        )
+
+        speak(goodbye_message)
+
         break
+
 
     # ---------------------------------
     # PUSH CONFIRMATION
@@ -188,7 +320,8 @@ while True:
         if command_lower in ["yes", "y", "haan", "ha"]:
 
             console.print(
-                "\n[yellow]🚀 ANDRO is pushing changes to GitHub...[/yellow]"
+                "\n[yellow]🚀 ANDRO is pushing changes "
+                "to GitHub...[/yellow]"
             )
 
             result = git_push(str(PROJECT_PATH))
@@ -196,24 +329,39 @@ while True:
             print_git_result("Push", result)
 
             waiting_for_push_confirmation = False
+
             continue
+
 
         elif command_lower in ["no", "n", "cancel", "nahi"]:
 
+            message = "Push cancelled. Nothing was pushed."
+
             console.print(
-                "\n[yellow]❌ Push cancelled. Nothing was pushed.[/yellow]\n"
+                f"\n[yellow]❌ {message}[/yellow]\n"
             )
 
+            speak(message)
+
             waiting_for_push_confirmation = False
+
             continue
+
 
         else:
 
-            console.print(
-                "\n[yellow]Please type YES to push or NO to cancel.[/yellow]\n"
+            message = (
+                "Please type yes to push or no to cancel."
             )
 
+            console.print(
+                f"\n[yellow]{message}[/yellow]\n"
+            )
+
+            speak(message)
+
             continue
+
 
     # ---------------------------------
     # FILE SEARCH TOOL
@@ -224,16 +372,26 @@ while True:
     if search_query:
 
         console.print(
-            f"\n[yellow]🔍 ANDRO is searching for: {search_query}[/yellow]"
+            f"\n[yellow]🔍 ANDRO is searching for: "
+            f"{search_query}[/yellow]"
         )
 
         results = find_files(search_query)
 
         if results:
 
-            console.print("\n[bold green]📂 Results found:[/bold green]\n")
+            console.print(
+                "\n[bold green]📂 Results found:[/bold green]\n"
+            )
 
-            for index, result in enumerate(results, start=1):
+            speak(
+                f"I found {len(results)} matching files or folders."
+            )
+
+            for index, result in enumerate(
+                results,
+                start=1
+            ):
 
                 console.print(
                     f"{index}. [{result['type'].upper()}] "
@@ -246,11 +404,18 @@ while True:
 
         else:
 
-            console.print(
-                "\n[bold red]❌ No matching files or folders found.[/bold red]\n"
+            message = (
+                "No matching files or folders were found."
             )
 
+            console.print(
+                f"\n[bold red]❌ {message}[/bold red]\n"
+            )
+
+            speak(message)
+
         continue
+
 
     # ---------------------------------
     # OPEN APP TOOL
@@ -261,7 +426,8 @@ while True:
     if app_name:
 
         console.print(
-            f"\n[yellow]💻 ANDRO is opening: {app_name}[/yellow]"
+            f"\n[yellow]💻 ANDRO is opening: "
+            f"{app_name}[/yellow]"
         )
 
         result = open_app(app_name)
@@ -269,16 +435,23 @@ while True:
         if result["success"]:
 
             console.print(
-                f"\n[bold green]✅ ANDRO: {result['message']}[/bold green]\n"
+                f"\n[bold green]✅ ANDRO: "
+                f"{result['message']}[/bold green]\n"
             )
+
+            speak(result["message"])
 
         else:
 
             console.print(
-                f"\n[bold red]❌ ANDRO: {result['message']}[/bold red]\n"
+                f"\n[bold red]❌ ANDRO: "
+                f"{result['message']}[/bold red]\n"
             )
 
+            speak(result["message"])
+
         continue
+
 
     # ---------------------------------
     # GIT AGENT
@@ -288,53 +461,82 @@ while True:
 
     if git_command:
 
-        # Make sure current project is a Git repository
+        # Check Git repository
         if not is_git_repository(str(PROJECT_PATH)):
 
-            console.print(
-                "\n[bold red]❌ This project is not a Git repository.[/bold red]\n"
+            message = (
+                "This project is not a Git repository."
             )
 
+            console.print(
+                f"\n[bold red]❌ {message}[/bold red]\n"
+            )
+
+            speak(message)
+
             continue
+
 
         # Git status
         if git_command == "status":
 
             console.print(
-                "\n[yellow]🔍 ANDRO is checking Git status...[/yellow]"
+                "\n[yellow]🔍 ANDRO is checking "
+                "Git status...[/yellow]"
             )
 
-            result = git_status(str(PROJECT_PATH))
+            result = git_status(
+                str(PROJECT_PATH)
+            )
 
-            print_git_result("Git Status", result)
+            print_git_result(
+                "Git Status",
+                result
+            )
 
             continue
+
 
         # Git add
         if git_command == "add":
 
             console.print(
-                "\n[yellow]➕ ANDRO is staging changes...[/yellow]"
+                "\n[yellow]➕ ANDRO is staging "
+                "changes...[/yellow]"
             )
 
-            result = git_add_all(str(PROJECT_PATH))
+            result = git_add_all(
+                str(PROJECT_PATH)
+            )
 
-            print_git_result("Git Add", result)
+            print_git_result(
+                "Git Add",
+                result
+            )
 
             continue
+
 
         # Missing commit message
         if git_command == "commit_missing_message":
 
-            console.print(
-                "\n[yellow]Please provide a commit message.[/yellow]"
+            message = (
+                "Please provide a commit message."
             )
 
             console.print(
-                '[cyan]Example: commit Added Chrome support[/cyan]\n'
+                f"\n[yellow]{message}[/yellow]"
             )
+
+            console.print(
+                "[cyan]Example: commit Added Chrome support"
+                "[/cyan]\n"
+            )
+
+            speak(message)
 
             continue
+
 
         # Git commit
         if isinstance(git_command, tuple):
@@ -342,8 +544,8 @@ while True:
             _, commit_message = git_command
 
             console.print(
-                f"\n[yellow]💾 ANDRO is creating commit:[/yellow] "
-                f"{commit_message}"
+                f"\n[yellow]💾 ANDRO is creating commit: "
+                f"{commit_message}[/yellow]"
             )
 
             result = git_commit(
@@ -351,34 +553,51 @@ while True:
                 commit_message
             )
 
-            print_git_result("Git Commit", result)
+            print_git_result(
+                "Git Commit",
+                result
+            )
 
             continue
+
 
         # Git push
         if git_command == "push":
 
-            console.print(
-                "\n[bold yellow]⚠️ This will push commits to the configured "
-                "remote repository.[/bold yellow]"
+            warning = (
+                "This will push commits to the configured "
+                "GitHub repository. Say yes to continue "
+                "or no to cancel."
             )
 
             console.print(
-                "[yellow]Type YES to continue or NO to cancel.[/yellow]\n"
+                "\n[bold yellow]⚠️ This will push commits "
+                "to the configured remote repository."
+                "[/bold yellow]"
             )
+
+            console.print(
+                "[yellow]Type YES to continue or NO "
+                "to cancel.[/yellow]\n"
+            )
+
+            speak(warning)
 
             waiting_for_push_confirmation = True
 
             continue
 
+
     # ---------------------------------
     # AI CHAT
     # ---------------------------------
 
-    messages.append({
-        "role": "user",
-        "content": user_input
-    })
+    messages.append(
+        {
+            "role": "user",
+            "content": user_input
+        }
+    )
 
     response = chat(
         model="qwen3:8b",
@@ -387,11 +606,11 @@ while True:
 
     answer = response.message.content
 
-    messages.append({
-        "role": "assistant",
-        "content": answer
-    })
-
-    console.print(
-        f"\n[bold cyan]ANDRO >[/bold cyan] {answer}\n"
+    messages.append(
+        {
+            "role": "assistant",
+            "content": answer
+        }
     )
+
+    andro_say(answer)
