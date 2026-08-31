@@ -1,21 +1,30 @@
+import threading
 import pyttsx3
 
 
-engine = pyttsx3.init()
+def _run_speak(text: str):
+    """Speak text using SAPI5 engine in thread."""
+    try:
+        try:
+            import pythoncom
+            pythoncom.CoInitialize()
+        except ImportError:
+            pass
 
-# Speech speed
-engine.setProperty("rate", 175)
-
-# Volume: 0.0 to 1.0
-engine.setProperty("volume", 1.0)
+        engine = pyttsx3.init()
+        engine.setProperty("rate", 180)
+        engine.setProperty("volume", 1.0)
+        engine.say(text)
+        engine.runAndWait()
+    except Exception:
+        pass
 
 
 def speak(text):
-    """Make ANDRO speak text."""
+    """Make ANDRO speak text asynchronously for instant sub-second actions."""
+    text = str(text).strip()
+    if not text:
+        return
 
-    text = str(text)
-
-    print(f"\n🗣️ ANDRO is speaking...")
-
-    engine.say(text)
-    engine.runAndWait()
+    thread = threading.Thread(target=_run_speak, args=(text,), daemon=True)
+    thread.start()

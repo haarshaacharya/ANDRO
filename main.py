@@ -41,8 +41,9 @@ console.print("[yellow]Type 'exit' to close ANDRO.[/yellow]")
 console.print("[yellow]Type 'voice' to speak to ANDRO.[/yellow]")
 console.print(
     "[cyan]Try natural commands like:\n"
+    " • 'Open YouTube, search Techno Gamerz and play the first video'\n"
+    " • 'YouTube kholo, Techno Gamerz search karo aur pehla video chalao'\n"
     " • 'Open Chrome and search Python tutorials on Google'\n"
-    " • 'Open YouTube and search for Techno Gamerz'\n"
     " • 'Open Storagge.in' or 'Open Google'\n"
     " • 'Find my ANDRO project' or 'Mera project dhundo'\n"
     " • 'Open Chrome' or 'Open Calculator'\n"
