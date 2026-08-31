@@ -1,9 +1,8 @@
 import io
 import os
-import base64
 import tempfile
+import subprocess
 from pathlib import Path
-import pyautogui
 import ollama
 
 # Preferred Ollama vision models in order of priority
@@ -18,15 +17,56 @@ VISION_MODELS = [
     "llama3.2-vision",
 ]
 
-# Active vision model configuration (can be customized)
 CONFIGURED_VISION_MODEL = "llava"
+
+
+def capture_screen_safely(output_path: str) -> bool:
+    """Capture full screen safely using PIL if available, or native Windows .NET without dependencies."""
+    # Method 1: Try PIL if installed
+    try:
+        from PIL import ImageGrab
+        screenshot = ImageGrab.grab()
+        screenshot.save(output_path)
+        return True
+    except Exception:
+        pass
+
+    # Method 2: Try PyAutoGUI if available
+    try:
+        import pyautogui
+        screenshot = pyautogui.screenshot()
+        screenshot.save(output_path)
+        return True
+    except Exception:
+        pass
+
+    # Method 3: Native Windows PowerShell .NET Screen Capture (Zero Dependencies)
+    try:
+        norm_path = output_path.replace("\\", "/")
+        ps_cmd = (
+            "Add-Type -AssemblyName System.Windows.Forms,System.Drawing; "
+            "$bounds = [System.Windows.Forms.Screen]::PrimaryScreen.Bounds; "
+            "$bmp = New-Object System.Drawing.Bitmap $bounds.Width, $bounds.Height; "
+            "$graphics = [System.Drawing.Graphics]::FromImage($bmp); "
+            "$graphics.CopyFromScreen($bounds.Location, [System.Drawing.Point]::Empty, $bounds.Size); "
+            f"$bmp.Save('{norm_path}', [System.Drawing.Imaging.ImageFormat]::Png); "
+            "$graphics.Dispose(); "
+            "$bmp.Dispose();"
+        )
+        flags = subprocess.CREATE_NO_WINDOW if os.name == "nt" else 0
+        res = subprocess.run(["powershell", "-NoProfile", "-Command", ps_cmd], capture_output=True, creationflags=flags)
+        if os.path.exists(output_path) and os.path.getsize(output_path) > 0:
+            return True
+    except Exception:
+        pass
+
+    return False
 
 
 def get_available_vision_model():
     """Find the first available vision model installed in local Ollama."""
     try:
         models_response = ollama.list()
-        # Handle both dict and object structures
         models_list = getattr(models_response, "models", None) or models_response.get("models", [])
         installed_names = []
         for m in models_list:
@@ -39,7 +79,6 @@ def get_available_vision_model():
                 if inst.startswith(v_model):
                     return inst
 
-        # Also check configured model
         for inst in installed_names:
             if CONFIGURED_VISION_MODEL in inst:
                 return inst
@@ -60,18 +99,20 @@ def analyze_screen(prompt: str = ""):
     temp_path = None
     try:
         # Step 1: Capture one single screenshot on demand
-        screenshot = pyautogui.screenshot()
-
-        # Save to a temporary image file for processing
         with tempfile.NamedTemporaryFile(suffix=".png", delete=False) as tmp_file:
             temp_path = tmp_file.name
-            screenshot.save(temp_path)
+
+        captured = capture_screen_safely(temp_path)
+        if not captured or not os.path.exists(temp_path) or os.path.getsize(temp_path) == 0:
+            return {
+                "success": False,
+                "message": "Could not capture the screen image. Run 'pip install pillow' to enable screenshot support.",
+            }
 
         # Step 2: Check for installed vision model in Ollama
         vision_model = get_available_vision_model()
 
         if vision_model:
-            # Query Ollama vision model with the image
             with open(temp_path, "rb") as img_f:
                 image_bytes = img_f.read()
 
@@ -92,14 +133,13 @@ def analyze_screen(prompt: str = ""):
                 "model_used": vision_model,
             }
         else:
-            # Vision model not yet downloaded - provide a friendly, helpful guide
             return {
                 "success": True,
                 "message": (
-                    "I captured the screen, but a vision-capable AI model is not yet installed in Ollama.\n"
+                    "I captured your screen, but a vision-capable AI model is not yet installed in Ollama.\n\n"
                     "💡 To enable full AI Screen Vision, open your terminal and run:\n"
                     "   ollama pull llava\n"
-                    "   (or: ollama pull moondream)\n"
+                    "   (or: ollama pull moondream)\n\n"
                     "Once downloaded, I will be able to visually inspect your screen and explain errors!"
                 ),
                 "model_used": None,

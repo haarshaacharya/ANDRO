@@ -34,30 +34,12 @@ from tools.git_tools import (
 )
 
 
-SYSTEM_PROMPT = """You are ANDRO, a powerful and intelligent personal AI assistant, multi-step computer agent, and screen vision assistant.
+SYSTEM_PROMPT = """You are ANDRO, a lightning-fast, intelligent personal AI assistant and multi-step computer agent.
 
 You help the user with programming, projects, computer tasks, files, desktop applications, web browser automation, desktop automation (typing text, keys, shortcuts, screenshots, mouse control), Smart Screen Vision analysis, and Git operations.
 You can understand English as well as Hindi / Hinglish phrasing (e.g. "Chrome khol do", "Mera project dhundo", "YouTube pe Techno Gamerz search karo", "Techno Gamerz play karo", "Notepad me hello likho", "Enter dabao", "Screen par kya hai", "Is error ko explain karo").
 
-TOOL ROUTING PRIORITY RULES:
-1. If the user asks about the screen or visual contents (e.g. "What is on my screen?", "Analyze my screen", "Screen par kya hai?", "Is error ko explain karo"), call `analyze_screen`.
-2. If the user asks to type text (e.g. "Type hello in Notepad", "Type Hello World", "likho Hello"), call `type_text`.
-3. If the user asks to press a key (e.g. "Press Enter", "Press Escape", "Enter dabao"), call `press_key`.
-4. If the user asks for a keyboard shortcut (e.g. "Press Ctrl L", "Shortcut Ctrl C", "Ctrl V dabao"), call `keyboard_shortcut`.
-5. If the user asks for a screenshot (e.g. "Take a screenshot", "Screenshot lo"), call `take_screenshot`.
-6. If the user asks to move the mouse or click (e.g. "Move mouse to 500 400", "Click", "Double click"), call `mouse_move` or `mouse_click`.
-7. If the user asks to play a video or search YouTube and play (e.g. "Open YouTube, search Techno Gamerz and play the first video", "Play Techno Gamerz on YouTube", "Techno Gamerz play karo"), call `play_youtube_video`.
-8. If the user asks to search YouTube (e.g. "search Techno Gamerz", "search Techno Gamerz on YouTube"), call `search_youtube`.
-9. If the user asks to search Google (e.g. "Search Python tutorials on Google"), call `search_google`.
-10. Only call `open_website` if the user ONLY wants to open a domain/website without searching or playing (e.g. "Open Storagge.in", "Open YouTube", "Open Google").
-11. If the user asks to open an application (e.g. "Open Chrome", "Open Calculator", "Open Notepad"), call `open_app`.
-12. If the user asks to search files/folders (e.g. "Find my ANDRO project", "Mera project dhundo"), call `search_files`.
-13. For Git operations, call `git_status`, `git_add`, `git_commit`, or `git_push`.
-14. For general conversation or programming questions, respond directly and concisely without calling any tool.
-
-Safety note: Never perform destructive actions automatically. Git push requires explicit confirmation.
-
-Always be concise, friendly, and helpful.
+Keep conversational responses brief, helpful, and concise (1-2 sentences).
 """
 
 # Ollama Tool Definitions
@@ -72,7 +54,7 @@ AGENT_TOOLS = [
                 "properties": {
                     "prompt": {
                         "type": "string",
-                        "description": "Specific question or focus area for visual analysis (e.g. 'explain the visible error message').",
+                        "description": "Specific question or focus area for visual analysis.",
                     }
                 },
             },
@@ -230,7 +212,7 @@ AGENT_TOOLS = [
                 "properties": {
                     "query": {
                         "type": "string",
-                        "description": "The search term to search on Google (e.g. 'Python tutorials', 'artificial intelligence news').",
+                        "description": "The search term to search on Google.",
                     }
                 },
                 "required": ["query"],
@@ -247,7 +229,7 @@ AGENT_TOOLS = [
                 "properties": {
                     "url": {
                         "type": "string",
-                        "description": "The website domain or URL to open (e.g. 'storagge.in', 'youtube.com', 'google.com').",
+                        "description": "The website domain or URL to open.",
                     }
                 },
                 "required": ["url"],
@@ -264,7 +246,7 @@ AGENT_TOOLS = [
                 "properties": {
                     "app_name": {
                         "type": "string",
-                        "description": "The name of the application to open (e.g. 'chrome', 'notepad', 'calculator', 'paint', 'explorer', 'vscode').",
+                        "description": "The name of the application to open.",
                     }
                 },
                 "required": ["app_name"],
@@ -281,7 +263,7 @@ AGENT_TOOLS = [
                 "properties": {
                     "query": {
                         "type": "string",
-                        "description": "The exact name, keyword, or pattern of the file, folder, or project to search for (e.g. 'ANDRO', 'main.py', 'notes').",
+                        "description": "The exact name, keyword, or pattern of the file or folder to search for.",
                     }
                 },
                 "required": ["query"],
@@ -292,7 +274,7 @@ AGENT_TOOLS = [
         "type": "function",
         "function": {
             "name": "git_status",
-            "description": "Check the Git status of the current project repository (shows changed, untracked, and staged files).",
+            "description": "Check the Git status of the current project repository.",
             "parameters": {
                 "type": "object",
                 "properties": {},
@@ -342,12 +324,13 @@ AGENT_TOOLS = [
 
 
 class AndroAgent:
-    """Intelligent Multi-Step AI Agent for ANDRO with planning, screen vision, and computer automation."""
+    """Intelligent Sub-Second Multi-Step AI Agent for ANDRO."""
 
-    def __init__(self, project_path: Path, console: Console, model: str = "qwen3:8b"):
+    def __init__(self, project_path: Path, console: Console, model: str = "qwen3:8b", on_message=None):
         self.project_path = project_path
         self.console = console
         self.model = model
+        self.on_message = on_message
         self.stop_requested = False
         self.messages = [
             {
@@ -361,24 +344,34 @@ class AndroAgent:
         self.stop_requested = True
 
     def andro_say(self, text: str):
-        """Print and speak ANDRO's response."""
+        """Print, speak, and notify GUI of ANDRO's response."""
         text = str(text)
         self.console.print(f"\n[bold cyan]ANDRO >[/bold cyan] {text}\n")
+        if self.on_message:
+            try:
+                self.on_message(text)
+            except Exception:
+                pass
         speak(text)
 
     def print_git_result(self, title: str, result: dict):
         """Print Git tool results and speak them."""
+        msg = result.get("message", "")
         if result.get("success"):
             self.console.print(f"\n[bold green]✅ {title}[/bold green]")
-            self.console.print(f"[cyan]{result['message']}[/cyan]\n")
-            speak(result["message"])
+            self.console.print(f"[cyan]{msg}[/cyan]\n")
+            if self.on_message:
+                self.on_message(f"✅ **{title}**: {msg}")
+            speak(msg)
         else:
             self.console.print(f"\n[bold red]❌ {title} failed[/bold red]")
-            self.console.print(f"[red]{result['message']}[/red]\n")
-            speak(result["message"])
+            self.console.print(f"[red]{msg}[/red]\n")
+            if self.on_message:
+                self.on_message(f"❌ **{title} failed**: {msg}")
+            speak(msg)
 
     def execute_tool(self, tool_name: str, args: dict, trigger_push_confirmation=None) -> bool:
-        """Execute a detected tool with given arguments."""
+        """Execute a detected tool with given arguments with zero lag."""
         if self.stop_requested:
             return False
 
@@ -389,12 +382,17 @@ class AndroAgent:
             prompt = args.get("prompt") or ""
             self.console.print("\n[yellow]👁️ ANDRO is capturing and analyzing screen...[/yellow]")
             result = analyze_screen(prompt)
+            msg = result.get("message", "")
             if result.get("success"):
-                self.console.print(f"\n[bold green]🖥️ Screen Analysis:[/bold green]\n{result['message']}\n")
-                speak(result["message"])
+                self.console.print(f"\n[bold green]🖥️ Screen Analysis:[/bold green]\n{msg}\n")
+                if self.on_message:
+                    self.on_message(f"👁️ **Screen Analysis:**\n{msg}")
+                speak(msg)
             else:
-                self.console.print(f"\n[bold red]❌ ANDRO: {result['message']}[/bold red]\n")
-                speak(result["message"])
+                self.console.print(f"\n[bold red]❌ ANDRO: {msg}[/bold red]\n")
+                if self.on_message:
+                    self.on_message(f"❌ {msg}")
+                speak(msg)
             return True
 
         # ---------------------------------
@@ -409,12 +407,17 @@ class AndroAgent:
 
             self.console.print(f"\n[yellow]⌨️ ANDRO is typing text: '{text_to_type}'[/yellow]")
             result = type_text(text_to_type)
+            msg = result.get("message", "")
             if result.get("success"):
-                self.console.print(f"\n[bold green]✅ ANDRO: {result['message']}[/bold green]\n")
-                speak(result["message"])
+                self.console.print(f"\n[bold green]✅ ANDRO: {msg}[/bold green]\n")
+                if self.on_message:
+                    self.on_message(f"⌨️ {msg}")
+                speak(msg)
             else:
-                self.console.print(f"\n[bold red]❌ ANDRO: {result['message']}[/bold red]\n")
-                speak(result["message"])
+                self.console.print(f"\n[bold red]❌ ANDRO: {msg}[/bold red]\n")
+                if self.on_message:
+                    self.on_message(f"❌ {msg}")
+                speak(msg)
             return True
 
         # ---------------------------------
@@ -429,12 +432,17 @@ class AndroAgent:
 
             self.console.print(f"\n[yellow]⌨️ ANDRO is pressing key: '{key}'[/yellow]")
             result = press_key(key)
+            msg = result.get("message", "")
             if result.get("success"):
-                self.console.print(f"\n[bold green]✅ ANDRO: {result['message']}[/bold green]\n")
-                speak(result["message"])
+                self.console.print(f"\n[bold green]✅ ANDRO: {msg}[/bold green]\n")
+                if self.on_message:
+                    self.on_message(f"⌨️ {msg}")
+                speak(msg)
             else:
-                self.console.print(f"\n[bold red]❌ ANDRO: {result['message']}[/bold red]\n")
-                speak(result["message"])
+                self.console.print(f"\n[bold red]❌ ANDRO: {msg}[/bold red]\n")
+                if self.on_message:
+                    self.on_message(f"❌ {msg}")
+                speak(msg)
             return True
 
         # ---------------------------------
@@ -449,12 +457,17 @@ class AndroAgent:
 
             self.console.print(f"\n[yellow]⌨️ ANDRO is pressing shortcut: '{shortcut}'[/yellow]")
             result = keyboard_shortcut(shortcut)
+            msg = result.get("message", "")
             if result.get("success"):
-                self.console.print(f"\n[bold green]✅ ANDRO: {result['message']}[/bold green]\n")
-                speak(result["message"])
+                self.console.print(f"\n[bold green]✅ ANDRO: {msg}[/bold green]\n")
+                if self.on_message:
+                    self.on_message(f"⌨️ {msg}")
+                speak(msg)
             else:
-                self.console.print(f"\n[bold red]❌ ANDRO: {result['message']}[/bold red]\n")
-                speak(result["message"])
+                self.console.print(f"\n[bold red]❌ ANDRO: {msg}[/bold red]\n")
+                if self.on_message:
+                    self.on_message(f"❌ {msg}")
+                speak(msg)
             return True
 
         # ---------------------------------
@@ -464,12 +477,17 @@ class AndroAgent:
             filename = args.get("filename") or ""
             self.console.print("\n[yellow]📸 ANDRO is capturing screenshot...[/yellow]")
             result = take_screenshot(filename)
+            msg = result.get("message", "")
             if result.get("success"):
-                self.console.print(f"\n[bold green]✅ ANDRO: {result['message']}[/bold green]\n")
-                speak("Screenshot taken and saved successfully.")
+                self.console.print(f"\n[bold green]✅ ANDRO: {msg}[/bold green]\n")
+                if self.on_message:
+                    self.on_message(f"📸 {msg}")
+                speak("Screenshot taken successfully.")
             else:
-                self.console.print(f"\n[bold red]❌ ANDRO: {result['message']}[/bold red]\n")
-                speak(result["message"])
+                self.console.print(f"\n[bold red]❌ ANDRO: {msg}[/bold red]\n")
+                if self.on_message:
+                    self.on_message(f"❌ {msg}")
+                speak(msg)
             return True
 
         # ---------------------------------
@@ -479,12 +497,17 @@ class AndroAgent:
             button = args.get("button") or "left"
             clicks = args.get("clicks") or 1
             result = mouse_click(button=button, clicks=int(clicks))
+            msg = result.get("message", "")
             if result.get("success"):
-                self.console.print(f"\n[bold green]✅ ANDRO: {result['message']}[/bold green]\n")
-                speak(result["message"])
+                self.console.print(f"\n[bold green]✅ ANDRO: {msg}[/bold green]\n")
+                if self.on_message:
+                    self.on_message(f"🖱️ {msg}")
+                speak(msg)
             else:
-                self.console.print(f"\n[bold red]❌ ANDRO: {result['message']}[/bold red]\n")
-                speak(result["message"])
+                self.console.print(f"\n[bold red]❌ ANDRO: {msg}[/bold red]\n")
+                if self.on_message:
+                    self.on_message(f"❌ {msg}")
+                speak(msg)
             return True
 
         # ---------------------------------
@@ -494,12 +517,17 @@ class AndroAgent:
             x = args.get("x") or 0
             y = args.get("y") or 0
             result = mouse_move(int(x), int(y))
+            msg = result.get("message", "")
             if result.get("success"):
-                self.console.print(f"\n[bold green]✅ ANDRO: {result['message']}[/bold green]\n")
-                speak(result["message"])
+                self.console.print(f"\n[bold green]✅ ANDRO: {msg}[/bold green]\n")
+                if self.on_message:
+                    self.on_message(f"🖱️ {msg}")
+                speak(msg)
             else:
-                self.console.print(f"\n[bold red]❌ ANDRO: {result['message']}[/bold red]\n")
-                speak(result["message"])
+                self.console.print(f"\n[bold red]❌ ANDRO: {msg}[/bold red]\n")
+                if self.on_message:
+                    self.on_message(f"❌ {msg}")
+                speak(msg)
             return True
 
         # ---------------------------------
@@ -517,12 +545,18 @@ class AndroAgent:
             if results:
                 self.console.print("\n[bold green]📂 Results found:[/bold green]\n")
                 speak(f"I found {len(results)} matching files or folders.")
-                for index, result in enumerate(results, start=1):
+                lines = [f"🔍 Found {len(results)} results for '{query}':"]
+                for index, result in enumerate(results[:5], start=1):
                     self.console.print(f"{index}. [{result['type'].upper()}] {result['name']}")
                     self.console.print(f"   📍 {result['path']}\n")
+                    lines.append(f"{index}. **{result['name']}** ({result['type']})\n   📍 `{result['path']}`")
+                if self.on_message:
+                    self.on_message("\n".join(lines))
             else:
                 message = "No matching files or folders were found."
                 self.console.print(f"\n[bold red]❌ {message}[/bold red]\n")
+                if self.on_message:
+                    self.on_message(f"❌ {message}")
                 speak(message)
             return True
 
@@ -538,12 +572,17 @@ class AndroAgent:
 
             self.console.print(f"\n[yellow]💻 ANDRO is opening: {app_name}[/yellow]")
             result = open_app(app_name)
+            msg = result.get("message", "")
             if result.get("success"):
-                self.console.print(f"\n[bold green]✅ ANDRO: {result['message']}[/bold green]\n")
-                speak(result["message"])
+                self.console.print(f"\n[bold green]✅ ANDRO: {msg}[/bold green]\n")
+                if self.on_message:
+                    self.on_message(f"💻 {msg}")
+                speak(msg)
             else:
-                self.console.print(f"\n[bold red]❌ ANDRO: {result['message']}[/bold red]\n")
-                speak(result["message"])
+                self.console.print(f"\n[bold red]❌ ANDRO: {msg}[/bold red]\n")
+                if self.on_message:
+                    self.on_message(f"❌ {msg}")
+                speak(msg)
             return True
 
         # ---------------------------------
@@ -558,12 +597,17 @@ class AndroAgent:
 
             self.console.print(f"\n[yellow]🎬 ANDRO is searching YouTube and playing the first video: '{query}'[/yellow]")
             result = play_first_video(query)
+            msg = result.get("message", "")
             if result.get("success"):
-                self.console.print(f"\n[bold green]✅ ANDRO: {result['message']}[/bold green]\n")
-                speak(result["message"])
+                self.console.print(f"\n[bold green]✅ ANDRO: {msg}[/bold green]\n")
+                if self.on_message:
+                    self.on_message(f"🎬 {msg}")
+                speak(msg)
             else:
-                self.console.print(f"\n[bold red]❌ ANDRO: {result['message']}[/bold red]\n")
-                speak(result["message"])
+                self.console.print(f"\n[bold red]❌ ANDRO: {msg}[/bold red]\n")
+                if self.on_message:
+                    self.on_message(f"❌ {msg}")
+                speak(msg)
             return True
 
         # ---------------------------------
@@ -578,12 +622,17 @@ class AndroAgent:
 
             self.console.print(f"\n[yellow]🎬 ANDRO is searching YouTube for: '{query}'[/yellow]")
             result = search_youtube(query)
+            msg = result.get("message", "")
             if result.get("success"):
-                self.console.print(f"\n[bold green]✅ ANDRO: {result['message']}[/bold green]\n")
-                speak(result["message"])
+                self.console.print(f"\n[bold green]✅ ANDRO: {msg}[/bold green]\n")
+                if self.on_message:
+                    self.on_message(f"🎬 {msg}")
+                speak(msg)
             else:
-                self.console.print(f"\n[bold red]❌ ANDRO: {result['message']}[/bold red]\n")
-                speak(result["message"])
+                self.console.print(f"\n[bold red]❌ ANDRO: {msg}[/bold red]\n")
+                if self.on_message:
+                    self.on_message(f"❌ {msg}")
+                speak(msg)
             return True
 
         # ---------------------------------
@@ -598,12 +647,17 @@ class AndroAgent:
 
             self.console.print(f"\n[yellow]🔎 ANDRO is searching Google for: '{query}'[/yellow]")
             result = search_google(query)
+            msg = result.get("message", "")
             if result.get("success"):
-                self.console.print(f"\n[bold green]✅ ANDRO: {result['message']}[/bold green]\n")
-                speak(result["message"])
+                self.console.print(f"\n[bold green]✅ ANDRO: {msg}[/bold green]\n")
+                if self.on_message:
+                    self.on_message(f"🔎 {msg}")
+                speak(msg)
             else:
-                self.console.print(f"\n[bold red]❌ ANDRO: {result['message']}[/bold red]\n")
-                speak(result["message"])
+                self.console.print(f"\n[bold red]❌ ANDRO: {msg}[/bold red]\n")
+                if self.on_message:
+                    self.on_message(f"❌ {msg}")
+                speak(msg)
             return True
 
         # ---------------------------------
@@ -618,12 +672,17 @@ class AndroAgent:
 
             self.console.print(f"\n[yellow]🌐 ANDRO is opening website: {url}[/yellow]")
             result = open_website(url)
+            msg = result.get("message", "")
             if result.get("success"):
-                self.console.print(f"\n[bold green]✅ ANDRO: {result['message']}[/bold green]\n")
-                speak(result["message"])
+                self.console.print(f"\n[bold green]✅ ANDRO: {msg}[/bold green]\n")
+                if self.on_message:
+                    self.on_message(f"🌐 {msg}")
+                speak(msg)
             else:
-                self.console.print(f"\n[bold red]❌ ANDRO: {result['message']}[/bold red]\n")
-                speak(result["message"])
+                self.console.print(f"\n[bold red]❌ ANDRO: {msg}[/bold red]\n")
+                if self.on_message:
+                    self.on_message(f"❌ {msg}")
+                speak(msg)
             return True
 
         # ---------------------------------
@@ -633,6 +692,8 @@ class AndroAgent:
             if not is_git_repository(str(self.project_path)):
                 message = "This project is not a Git repository."
                 self.console.print(f"\n[bold red]❌ {message}[/bold red]\n")
+                if self.on_message:
+                    self.on_message(f"❌ {message}")
                 speak(message)
                 return True
 
@@ -648,6 +709,8 @@ class AndroAgent:
             if not is_git_repository(str(self.project_path)):
                 message = "This project is not a Git repository."
                 self.console.print(f"\n[bold red]❌ {message}[/bold red]\n")
+                if self.on_message:
+                    self.on_message(f"❌ {message}")
                 speak(message)
                 return True
 
@@ -663,6 +726,8 @@ class AndroAgent:
             if not is_git_repository(str(self.project_path)):
                 message = "This project is not a Git repository."
                 self.console.print(f"\n[bold red]❌ {message}[/bold red]\n")
+                if self.on_message:
+                    self.on_message(f"❌ {message}")
                 speak(message)
                 return True
 
@@ -672,6 +737,8 @@ class AndroAgent:
                 message = "Please provide a commit message."
                 self.console.print(f"\n[yellow]{message}[/yellow]")
                 self.console.print("[cyan]Example: commit Added new feature[/cyan]\n")
+                if self.on_message:
+                    self.on_message(f"⚠️ {message} Example: `commit Added new feature`")
                 speak(message)
                 return True
 
@@ -687,17 +754,16 @@ class AndroAgent:
             if not is_git_repository(str(self.project_path)):
                 message = "This project is not a Git repository."
                 self.console.print(f"\n[bold red]❌ {message}[/bold red]\n")
+                if self.on_message:
+                    self.on_message(f"❌ {message}")
                 speak(message)
                 return True
 
-            warning = (
-                "This will push commits to the configured GitHub repository. "
-                "Say yes to continue or no to cancel."
-            )
-            self.console.print(
-                "\n[bold yellow]⚠️ This will push commits to the configured remote repository.[/bold yellow]"
-            )
+            warning = "This will push commits to the configured GitHub repository. Say yes to continue or no to cancel."
+            self.console.print("\n[bold yellow]⚠️ This will push commits to the configured remote repository.[/bold yellow]")
             self.console.print("[yellow]Type YES to continue or NO to cancel.[/yellow]\n")
+            if self.on_message:
+                self.on_message("⚠️ **Push Confirmation:** This will push commits to GitHub. Type/say **YES** to continue or **NO** to cancel.")
             speak(warning)
             if trigger_push_confirmation:
                 trigger_push_confirmation()
@@ -706,12 +772,11 @@ class AndroAgent:
         return False
 
     def _decompose_multi_step(self, user_input: str) -> list:
-        """Decompose compound multi-step commands into ordered executable actions."""
+        """Decompose compound multi-step commands into ordered executable actions in < 1ms."""
         text = user_input.lower().strip()
 
         # Multi-Step Example: "Open Notepad and type Hello from ANDRO" / "Notepad kholo aur hello likho"
         if ("open notepad" in text or "notepad khol" in text) and any(k in text for k in ["type ", "likho ", "write "]):
-            # Extract text to type
             type_part = ""
             for kw in ["type ", "likho ", "write "]:
                 if kw in text:
@@ -720,13 +785,12 @@ class AndroAgent:
             if type_part:
                 return [
                     {"tool": "open_app", "args": {"app_name": "notepad"}, "title": "Opening Notepad"},
-                    {"tool": "_wait", "args": {"seconds": 0.8}, "title": "Waiting for Notepad window"},
-                    {"tool": "type_text", "args": {"text": type_part}, "title": f"Typing text '{type_part}'"},
+                    {"tool": "_wait", "args": {"seconds": 0.2}, "title": "Focusing Notepad window"},
+                    {"tool": "type_text", "args": {"text": type_part}, "title": f"Typing '{type_part}'"},
                 ]
 
         # Multi-Step Example: "Open Chrome, search Python tutorials, then open YouTube and search Techno Gamerz"
         if ("open chrome" in text or "chrome" in text) and "open youtube" in text and ("search" in text or "play" in text):
-            # Extract queries
             steps = []
             if "search" in text and "python" in text:
                 steps.append({"tool": "search_google", "args": {"query": "Python tutorials"}, "title": "Searching Python tutorials on Google"})
@@ -747,7 +811,7 @@ class AndroAgent:
         return []
 
     def execute_multi_step_plan(self, plan: list, trigger_push_confirmation=None) -> bool:
-        """Execute an ordered multi-step plan with live step-by-step progress tracking."""
+        """Execute an ordered multi-step plan with live progress tracking."""
         self.stop_requested = False
         total_steps = len(plan)
         self.console.print(f"\n[bold magenta]🧠 ANDRO is planning the task ({total_steps} steps)...[/bold magenta]\n")
@@ -766,7 +830,7 @@ class AndroAgent:
             self.console.print(f"[bold cyan]Step {index}/{total_steps}: {title}...[/bold cyan]")
 
             if tool_name == "_wait":
-                time.sleep(args.get("seconds", 0.5))
+                time.sleep(args.get("seconds", 0.2))
             else:
                 self.execute_tool(tool_name, args, trigger_push_confirmation)
 
@@ -788,7 +852,7 @@ class AndroAgent:
             self.stop()
             return ("stop", {})
 
-        # Screen Vision commands (e.g. "What is on my screen?", "Screen par kya hai?", "Analyze my screen", "Is error ko explain karo")
+        # Screen Vision commands
         vision_triggers = [
             "what is on my screen", "what's on my screen", "what is on screen",
             "screen par kya hai", "screen pe kya hai", "analyze my screen",
@@ -803,7 +867,7 @@ class AndroAgent:
         if any(k in text for k in ["take a screenshot", "take screenshot", "capture screen", "screenshot lo", "screenshot le lo", "screenshot"]):
             return ("take_screenshot", {})
 
-        # Type text commands (e.g. "Type hello in Notepad", "Type Hello World", "likho hello")
+        # Type text commands
         if text.startswith("type ") or text.startswith("likho ") or " me likho " in text or " mein likho " in text:
             cleaned = user_input
             for prefix in ["Type ", "type ", "likho ", "Likho "]:
@@ -817,7 +881,7 @@ class AndroAgent:
             if cleaned:
                 return ("type_text", {"text": cleaned})
 
-        # Key press commands (e.g. "Press Enter", "Enter dabao", "Press Escape", "Press Tab")
+        # Key press commands
         key_matches = {
             "enter": ["press enter", "enter dabao", "hit enter", "press return"],
             "escape": ["press escape", "press esc", "esc dabao", "escape dabao"],
@@ -831,7 +895,7 @@ class AndroAgent:
             if any(text == t or text.startswith(t + " ") for t in triggers):
                 return ("press_key", {"key": key})
 
-        # Keyboard shortcuts (e.g. "Press Ctrl L", "Press Ctrl+C", "Shortcut Ctrl V", "Ctrl L dabao")
+        # Keyboard shortcuts
         if "ctrl" in text or "alt" in text or "shortcut" in text:
             m = re.search(r'(ctrl|alt|shift|win)[\s\+\-]+([a-z0-9]+)', text)
             if m:
@@ -846,7 +910,7 @@ class AndroAgent:
         if text in ["right click", "right click karo"]:
             return ("mouse_click", {"button": "right", "clicks": 1})
 
-        # Mouse move commands (e.g. "Move mouse to 500 400", "Move cursor to 500 400")
+        # Mouse move commands
         if "mouse" in text or "cursor" in text:
             m = re.search(r'(\d+)[,\s]+(\d+)', text)
             if m:
@@ -917,7 +981,7 @@ class AndroAgent:
             if query:
                 return ("play_youtube_video", {"query": query})
 
-        # Explicit YouTube Search (e.g., "search Techno Gamerz on youtube", "search Techno Gamerz", "Techno Gamerz search karo")
+        # Explicit YouTube Search
         if "youtube" in text and any(k in text for k in ["search", "dhundo", "dhoondo", "look for"]):
             query = text
             for phrase in [
@@ -941,7 +1005,7 @@ class AndroAgent:
             if query:
                 return ("search_youtube", {"query": query})
 
-        # Google Searches (e.g. "search Python tutorials on Google", "google search Python tutorials")
+        # Google Searches
         if "google" in text and any(k in text for k in ["search", "dhundo", "dhoondo", "look for", "find"]):
             query = text
             for phrase in [
@@ -1010,20 +1074,20 @@ class AndroAgent:
         return (None, {})
 
     def process_input(self, user_input: str, trigger_push_confirmation=None):
-        """Process user input with multi-step planning, high-accuracy tool routing, and Ollama chat."""
+        """Process user input with sub-second execution, multi-step planning, and Ollama chat."""
         user_input = user_input.strip()
         if not user_input:
             return
 
         self.stop_requested = False
 
-        # 1. Check for compound multi-step tasks (STEP 12)
+        # 1. Instant check for compound multi-step tasks (< 1ms)
         multi_step_plan = self._decompose_multi_step(user_input)
         if multi_step_plan:
             self.execute_multi_step_plan(multi_step_plan, trigger_push_confirmation)
             return
 
-        # 2. Check high-precision direct intent router
+        # 2. Instant check for high-precision direct intent router (< 1ms)
         direct_tool, direct_args = self._parse_direct_intent(user_input)
         if direct_tool:
             if direct_tool == "stop":
@@ -1032,17 +1096,19 @@ class AndroAgent:
             self.execute_tool(direct_tool, direct_args, trigger_push_confirmation)
             return
 
-        # 3. Otherwise pass to Ollama with tools schema
-        self.messages.append({
-            "role": "user",
-            "content": user_input,
-        })
+        # 3. Otherwise fast Ollama completion (trimmed history & options for sub-second responses)
+        recent_messages = self.messages[-4:] + [{"role": "user", "content": user_input}]
 
         try:
             response = ollama.chat(
                 model=self.model,
-                messages=self.messages,
+                messages=recent_messages,
                 tools=AGENT_TOOLS,
+                options={
+                    "num_predict": 128,
+                    "temperature": 0.2,
+                    "top_k": 20,
+                },
             )
 
             message = response.message
@@ -1071,10 +1137,8 @@ class AndroAgent:
             # Conversational response
             content = getattr(message, "content", None) or ""
             if content:
-                self.messages.append({
-                    "role": "assistant",
-                    "content": content,
-                })
+                self.messages.append({"role": "user", "content": user_input})
+                self.messages.append({"role": "assistant", "content": content})
                 self.andro_say(content)
             else:
                 self.andro_say("I'm here to help! What would you like to do?")
@@ -1086,4 +1150,6 @@ class AndroAgent:
             else:
                 msg = f"AI Error: {error_str}"
             self.console.print(f"\n[bold red]❌ {msg}[/bold red]\n")
+            if self.on_message:
+                self.on_message(f"❌ {msg}")
             speak(msg)

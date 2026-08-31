@@ -121,6 +121,7 @@ def keyboard_shortcut(shortcut: str):
 def take_screenshot(filename: str = ""):
     """Capture full screen and save as timestamped image."""
     try:
+        from tools.vision import capture_screen_safely
         timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
         if filename:
             clean_name = filename if filename.endswith(".png") else f"{filename}.png"
@@ -128,14 +129,19 @@ def take_screenshot(filename: str = ""):
             clean_name = f"screenshot_{timestamp}.png"
 
         save_path = SCREENSHOTS_DIR / clean_name
-        screenshot = pyautogui.screenshot()
-        screenshot.save(str(save_path))
+        success = capture_screen_safely(str(save_path))
 
-        return {
-            "success": True,
-            "message": f"Screenshot saved: {clean_name} (in Pictures/ANDRO_Screenshots)",
-            "path": str(save_path),
-        }
+        if success and save_path.exists():
+            return {
+                "success": True,
+                "message": f"Screenshot saved: {clean_name} (in Pictures/ANDRO_Screenshots)",
+                "path": str(save_path),
+            }
+        else:
+            return {
+                "success": False,
+                "message": "Could not capture screenshot. Run 'pip install pillow' to enable screenshot support.",
+            }
     except Exception as error:
         return {
             "success": False,
