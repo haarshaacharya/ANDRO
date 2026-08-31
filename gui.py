@@ -9,6 +9,8 @@ from rich.console import Console
 from tools.voice import listen
 from tools.speaker import speak
 from tools.wake_word import WakeWordListener
+from tools.logger import log_activity
+from tools.state_manager import state_manager, AssistantState
 from tools.git_tools import git_push
 from agent import AndroAgent
 
@@ -27,7 +29,7 @@ except ImportError:
 
 
 class AndroGUI:
-    """World-Class Modern Desktop GUI for ANDRO Personal AI Assistant."""
+    """World-Class Modern Desktop GUI for ANDRO Personal AI Assistant (v1.1 Reliability)."""
 
     def __init__(self):
         self.agent = AndroAgent(
@@ -37,10 +39,11 @@ class AndroGUI:
             on_message=self.add_assistant_message,
         )
         self.listener = WakeWordListener()
-        self.state = "SLEEPING"  # SLEEPING, ACTIVE, PROCESSING
         self.is_wake_word_running = False
         self.waiting_for_push = False
-        self.chat_history = []
+
+        # Register GUI as a state listener
+        state_manager.add_listener(self.on_system_state_change)
 
         if GUI_FRAMEWORK == "customtkinter":
             self._init_customtkinter()
@@ -85,7 +88,7 @@ class AndroGUI:
 
         logo_sub = ctk.CTkLabel(
             brand_frame,
-            text="Personal AI Assistant & Agent",
+            text="Personal AI Assistant & Agent v1.1",
             font=ctk.CTkFont(family="Segoe UI", size=12),
             text_color="#64748b",
         )
@@ -290,12 +293,12 @@ class AndroGUI:
 
         # Add Welcome Message Card
         self.add_assistant_message(
-            "👋 **Hello! I am ANDRO, your Personal AI Assistant.**\n\n"
+            "👋 **Hello! I am ANDRO v1.1, your Personal AI Assistant.**\n\n"
             "Here is what I can do for you:\n"
             " • 👁️ **Smart Screen Vision:** Ask *'What is on my screen?'* or *'Explain this error'*\n"
             " • 🧠 **Multi-Step Tasks:** *'Open Notepad and type Hello from ANDRO'*\n"
             " • 🎬 **YouTube Automation:** *'Open YouTube, search Techno Gamerz and play the first video'*\n"
-            " • 🎙️ **Wake Word:** Say *'Hey ANDRO'* to activate, *'Bye ANDRO'* to sleep\n"
+            " • 🎙️ **Strict Wake Word:** Say *'Hey ANDRO'* to activate, *'Bye ANDRO'* to sleep\n"
             " • 🛑 **Emergency Stop:** Say or click *'STOP'* anytime to cancel a task safely\n"
             " • 💻 **Desktop & Git:** Open apps, check Git status, stage, commit & push."
         )
@@ -308,7 +311,7 @@ class AndroGUI:
         from tkinter import scrolledtext
 
         self.root = tk.Tk()
-        self.root.title("ANDRO — Personal AI Assistant")
+        self.root.title("ANDRO — Personal AI Assistant v1.1")
         self.root.geometry("1000x700")
         self.root.configure(bg="#090d16")
 
@@ -322,7 +325,7 @@ class AndroGUI:
         self.chat_container.pack(fill="both", expand=True, padx=16, pady=16)
 
     # -------------------------------------------------------------
-    # MESSAGE BUBBLE RENDERING (CHAT STREAM)
+    # MESSAGE BUBBLE RENDERING
     # -------------------------------------------------------------
     def add_user_message(self, text: str):
         """Render a sleek blue bubble on the right for user messages."""
@@ -388,7 +391,6 @@ class AndroGUI:
         )
         andro_tag.pack(anchor="w", padx=16, pady=(10, 2))
 
-        # Format bold tags and text cleanly
         clean_text = text.replace("**", "")
         msg_label = ctk.CTkLabel(
             bubble,
@@ -410,39 +412,27 @@ class AndroGUI:
         self.add_assistant_message("Conversation cleared. How can I assist you now?")
 
     # -------------------------------------------------------------
-    # STATE MANAGEMENT & DISPATCH
+    # 5-STATE MANAGEMENT
     # -------------------------------------------------------------
-    def set_state(self, new_state: str, detail_msg: str = ""):
-        """Update live status badges and banner smoothly."""
-        self.state = new_state
-        if new_state == "SLEEPING":
-            text = "🔴 SLEEPING"
-            color = "#f87171"
-            bg = "#2d1215"
-            default_detail = "Waiting for 'Hey ANDRO' or command"
-        elif new_state == "ACTIVE":
-            text = "🟢 ACTIVE"
-            color = "#4ade80"
-            bg = "#0f291e"
-            default_detail = "Listening & ready for your commands"
-        elif new_state == "PROCESSING":
-            text = "🟡 PROCESSING"
-            color = "#fbbf24"
-            bg = "#2c2009"
-            default_detail = "Thinking and executing task..."
-        else:
-            text = new_state
-            color = "#38bdf8"
-            bg = "#111827"
-            default_detail = ""
+    def on_system_state_change(self, state: AssistantState, detail: str):
+        """Callback from state_manager to update GUI badges with 5 visual states."""
+        state_configs = {
+            AssistantState.SLEEPING: ("🔴 SLEEPING", "#f87171", "#2d1215", "Waiting for 'Hey ANDRO'"),
+            AssistantState.ACTIVE: ("🟢 ACTIVE", "#4ade80", "#0f291e", "Listening & ready for your commands"),
+            AssistantState.LISTENING: ("🟡 LISTENING", "#facc15", "#2a2408", "Capturing microphone audio..."),
+            AssistantState.PROCESSING: ("🟠 PROCESSING", "#fb923c", "#2c1a09", "Thinking & executing task..."),
+            AssistantState.SPEAKING: ("🔵 SPEAKING", "#38bdf8", "#082f49", "ANDRO is speaking..."),
+        }
 
-        detail = detail_msg if detail_msg else default_detail
+        config = state_configs.get(state, ("⚪ UNKNOWN", "#94a3b8", "#1e293b", detail))
+        text, text_color, bg_color, default_detail = config
+        final_detail = detail if detail else default_detail
 
         def update():
             if GUI_FRAMEWORK == "customtkinter":
-                self.status_pill.configure(text=text, text_color=color, fg_color=bg)
-                self.status_detail.configure(text=detail)
-                self.live_bar.configure(text=f"✨ {detail}")
+                self.status_pill.configure(text=text, text_color=text_color, fg_color=bg_color)
+                self.status_detail.configure(text=final_detail)
+                self.live_bar.configure(text=f"✨ {final_detail}")
 
         self.root.after(0, update)
 
@@ -457,7 +447,7 @@ class AndroGUI:
     def send_command(self, text: str):
         """Send a user command to ANDRO asynchronously."""
         self.add_user_message(text)
-        self.set_state("PROCESSING", f"Executing: '{text}'...")
+        state_manager.set_state(AssistantState.PROCESSING, f"Executing: '{text}'...")
 
         threading.Thread(
             target=self._worker_execute_command,
@@ -482,7 +472,7 @@ class AndroGUI:
                     self.waiting_for_push = False
                 else:
                     speak("Please type yes to push or no to cancel.")
-                self.set_state("ACTIVE", "Ready for your next command.")
+                state_manager.set_state(AssistantState.ACTIVE, "Ready for your next command.")
                 return
 
             def trigger_push():
@@ -491,20 +481,21 @@ class AndroGUI:
             self.agent.process_input(text, trigger_push_confirmation=trigger_push)
         except Exception as err:
             self.add_assistant_message(f"❌ Error: {err}", is_error=True)
+            log_activity("GUI_ERROR", str(err))
         finally:
-            if self.state == "PROCESSING":
-                self.set_state("ACTIVE", "Ready for your next command.")
+            if state_manager.get_state() == AssistantState.PROCESSING:
+                state_manager.set_state(AssistantState.ACTIVE, "Ready for your next command.")
 
     def handle_stop_click(self):
         """Emergency stop handler."""
         self.agent.stop()
         self.add_assistant_message("🛑 **EMERGENCY STOP TRIGGERED:** Current task was stopped safely.", is_error=True)
         speak("Current task stopped.")
-        self.set_state("ACTIVE", "Task stopped safely. ANDRO is ACTIVE.")
+        state_manager.set_state(AssistantState.ACTIVE, "Task stopped safely. ANDRO is ACTIVE.")
 
     def handle_voice_once(self):
         """One-tap voice input button."""
-        self.set_state("PROCESSING", "🎤 Listening to microphone...")
+        state_manager.set_state(AssistantState.LISTENING, "🎤 Listening to microphone...")
         threading.Thread(target=self._voice_once_worker, daemon=True).start()
 
     def _voice_once_worker(self):
@@ -514,7 +505,7 @@ class AndroGUI:
             self.send_command(user_text)
         else:
             self.add_assistant_message(f"❌ {voice_result.get('message', 'Could not capture speech.')}", is_error=True)
-            self.set_state("ACTIVE", "Ready for your next command.")
+            state_manager.set_state(AssistantState.ACTIVE, "Ready for your next command.")
 
     def toggle_wake_word(self):
         """Toggle continuous background Wake-Word listening loop."""
@@ -523,26 +514,30 @@ class AndroGUI:
             if GUI_FRAMEWORK == "customtkinter":
                 self.wake_btn.configure(text="🎙️ Wake Word: ON", fg_color="#10b981", hover_color="#059669")
 
-            self.set_state("SLEEPING", "Wake-Word active. Say 'Hey ANDRO' anytime!")
-            self.add_assistant_message("🎙️ **Wake Word system is now ON.** Say *'Hey ANDRO'* to activate me anytime!")
+            state_manager.set_state(AssistantState.SLEEPING, "Wake-Word active. Say 'Hey ANDRO' anytime!")
+            self.add_assistant_message("🎙️ **Wake Word system is ON.** Say *'Hey ANDRO'* to activate me!")
             threading.Thread(target=self._wake_word_worker, daemon=True).start()
         else:
             self.is_wake_word_running = False
             if GUI_FRAMEWORK == "customtkinter":
                 self.wake_btn.configure(text="🎙️ Wake Word: OFF", fg_color="#334155", hover_color="#475569")
             self.add_assistant_message("🔇 **Wake Word system stopped.** You can still type commands or use 'Speak Command'.")
-            self.set_state("ACTIVE", "Wake Word stopped. Ready for commands.")
+            state_manager.set_state(AssistantState.ACTIVE, "Wake Word stopped. Ready for commands.")
 
     def _wake_word_worker(self):
-        """Background continuous Wake-Word loop."""
+        """Background continuous Wake-Word loop with echo prevention."""
         while self.is_wake_word_running:
-            if self.state == "SLEEPING":
+            cur_state = state_manager.get_state()
+
+            if cur_state == AssistantState.SLEEPING:
                 detected = self.listener.listen_for_wake_word(timeout=3.0)
                 if detected and self.is_wake_word_running:
-                    self.set_state("ACTIVE", "🟢 'Hey ANDRO' detected! I am listening...")
+                    state_manager.set_state(AssistantState.ACTIVE, "🟢 'Hey ANDRO' detected! I am listening...")
                     self.add_assistant_message("🟢 **'Hey ANDRO' detected!** Yes, I'm listening.")
                     speak("Yes, I'm listening.")
-            elif self.state == "ACTIVE":
+                    # Wait for activation speech to finish before listening to next command
+                    state_manager.wait_after_speech(1.0)
+            elif cur_state in [AssistantState.ACTIVE, AssistantState.LISTENING]:
                 voice_result = self.listener.listen_command(timeout=7.0, phrase_time_limit=12.0)
                 if not self.is_wake_word_running:
                     break
@@ -553,7 +548,7 @@ class AndroGUI:
 
                     # Check for sleep command
                     if self.listener.is_sleep_command(user_text):
-                        self.set_state("SLEEPING", "🔴 ANDRO SLEEPING — Waiting for 'Hey ANDRO'")
+                        state_manager.set_state(AssistantState.SLEEPING, "🔴 ANDRO SLEEPING — Waiting for 'Hey ANDRO'")
                         self.add_assistant_message("🔴 **Goodbye. Going to sleep.** Say *'Hey ANDRO'* whenever you need me.")
                         speak("Goodbye. Going to sleep.")
                         continue
@@ -564,17 +559,19 @@ class AndroGUI:
                         continue
 
                     # Process command
-                    self.set_state("PROCESSING", f"Executing: '{user_text}'...")
+                    state_manager.set_state(AssistantState.PROCESSING, f"Executing: '{user_text}'...")
                     try:
                         self.agent.process_input(user_text)
                     finally:
-                        if self.is_wake_word_running and self.state != "SLEEPING":
-                            self.set_state("ACTIVE", "Ready for your next command.")
+                        if self.is_wake_word_running and state_manager.get_state() != AssistantState.SLEEPING:
+                            state_manager.set_state(AssistantState.ACTIVE, "Ready for your next command.")
                 else:
                     time.sleep(0.1)
+            else:
+                time.sleep(0.1)
 
     def run(self):
-        """Start the GUI mainloop."""
+        """Start the GUI mainloop with clean exit handling."""
         self.root.mainloop()
 
 

@@ -6,7 +6,7 @@ import pyperclip
 
 # Safety settings
 pyautogui.FAILSAFE = True
-pyautogui.PAUSE = 0.2
+pyautogui.PAUSE = 0.05
 
 # Directory to store screenshots
 SCREENSHOTS_DIR = Path.home() / "Pictures" / "ANDRO_Screenshots"
@@ -169,10 +169,10 @@ def mouse_click(button: str = "left", clicks: int = 1):
 
 
 def mouse_move(x: int, y: int):
-    """Move mouse cursor smoothly to coordinates (x, y)."""
+    """Move mouse cursor swiftly to coordinates (x, y)."""
     try:
         x, y = int(x), int(y)
-        pyautogui.moveTo(x, y, duration=0.3)
+        pyautogui.moveTo(x, y, duration=0.1)
         return {
             "success": True,
             "message": f"Moved mouse to ({x}, {y}).",

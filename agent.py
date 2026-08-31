@@ -8,6 +8,8 @@ import ollama
 from tools.files import find_files
 from tools.system import open_app
 from tools.speaker import speak
+from tools.logger import log_activity
+from tools.state_manager import state_manager, AssistantState
 from tools.browser_control import (
     open_website,
     open_youtube,
@@ -324,7 +326,7 @@ AGENT_TOOLS = [
 
 
 class AndroAgent:
-    """Intelligent Sub-Second Multi-Step AI Agent for ANDRO."""
+    """Intelligent Sub-Second Multi-Step AI Agent for ANDRO with reliability and error handling."""
 
     def __init__(self, project_path: Path, console: Console, model: str = "qwen3:8b", on_message=None):
         self.project_path = project_path
@@ -342,6 +344,7 @@ class AndroAgent:
     def stop(self):
         """Emergency stop handler to abort the active multi-step task immediately."""
         self.stop_requested = True
+        log_activity("STOP", "Emergency stop triggered by user")
 
     def andro_say(self, text: str):
         """Print, speak, and notify GUI of ANDRO's response."""
@@ -362,412 +365,431 @@ class AndroAgent:
             self.console.print(f"[cyan]{msg}[/cyan]\n")
             if self.on_message:
                 self.on_message(f"✅ **{title}**: {msg}")
+            log_activity("GIT", f"{title} succeeded: {msg}")
             speak(msg)
         else:
             self.console.print(f"\n[bold red]❌ {title} failed[/bold red]")
             self.console.print(f"[red]{msg}[/red]\n")
             if self.on_message:
                 self.on_message(f"❌ **{title} failed**: {msg}")
+            log_activity("GIT_ERROR", f"{title} failed: {msg}")
             speak(msg)
 
     def execute_tool(self, tool_name: str, args: dict, trigger_push_confirmation=None) -> bool:
-        """Execute a detected tool with given arguments with zero lag."""
+        """Execute a detected tool with given arguments, robust error handling, and activity logging."""
         if self.stop_requested:
             return False
 
-        # ---------------------------------
-        # 1. SMART SCREEN VISION
-        # ---------------------------------
-        if tool_name == "analyze_screen":
-            prompt = args.get("prompt") or ""
-            self.console.print("\n[yellow]👁️ ANDRO is capturing and analyzing screen...[/yellow]")
-            result = analyze_screen(prompt)
-            msg = result.get("message", "")
-            if result.get("success"):
-                self.console.print(f"\n[bold green]🖥️ Screen Analysis:[/bold green]\n{msg}\n")
-                if self.on_message:
-                    self.on_message(f"👁️ **Screen Analysis:**\n{msg}")
-                speak(msg)
-            else:
-                self.console.print(f"\n[bold red]❌ ANDRO: {msg}[/bold red]\n")
-                if self.on_message:
-                    self.on_message(f"❌ {msg}")
-                speak(msg)
-            return True
+        log_activity("TOOL_EXEC", f"Running '{tool_name}'", str(args))
 
-        # ---------------------------------
-        # 2. TYPE TEXT
-        # ---------------------------------
-        elif tool_name == "type_text":
-            text_to_type = args.get("text") or ""
-            text_to_type = str(text_to_type)
-            if not text_to_type:
-                self.andro_say("What text would you like me to type?")
+        try:
+            # 1. SMART SCREEN VISION
+            if tool_name == "analyze_screen":
+                prompt = args.get("prompt") or ""
+                self.console.print("\n[yellow]👁️ ANDRO is capturing and analyzing screen...[/yellow]")
+                result = analyze_screen(prompt)
+                msg = result.get("message", "")
+                if result.get("success"):
+                    self.console.print(f"\n[bold green]🖥️ Screen Analysis:[/bold green]\n{msg}\n")
+                    if self.on_message:
+                        self.on_message(f"👁️ **Screen Analysis:**\n{msg}")
+                    log_activity("VISION", "Screen analyzed successfully")
+                    speak(msg)
+                    return True
+                else:
+                    self.console.print(f"\n[bold red]❌ ANDRO: {msg}[/bold red]\n")
+                    if self.on_message:
+                        self.on_message(f"❌ {msg}")
+                    log_activity("VISION_ERROR", msg)
+                    speak(msg)
+                    return False
+
+            # 2. TYPE TEXT
+            elif tool_name == "type_text":
+                text_to_type = args.get("text") or ""
+                text_to_type = str(text_to_type)
+                if not text_to_type:
+                    self.andro_say("What text would you like me to type?")
+                    return True
+
+                self.console.print(f"\n[yellow]⌨️ ANDRO is typing text: '{text_to_type}'[/yellow]")
+                result = type_text(text_to_type)
+                msg = result.get("message", "")
+                if result.get("success"):
+                    self.console.print(f"\n[bold green]✅ ANDRO: {msg}[/bold green]\n")
+                    if self.on_message:
+                        self.on_message(f"⌨️ {msg}")
+                    log_activity("DESKTOP", f"Typed text '{text_to_type}'")
+                    speak(msg)
+                    return True
+                else:
+                    self.console.print(f"\n[bold red]❌ ANDRO: {msg}[/bold red]\n")
+                    if self.on_message:
+                        self.on_message(f"❌ {msg}")
+                    log_activity("DESKTOP_ERROR", msg)
+                    speak(msg)
+                    return False
+
+            # 3. PRESS KEY
+            elif tool_name == "press_key":
+                key = args.get("key") or ""
+                key = str(key).strip()
+                if not key:
+                    self.andro_say("Which key should I press?")
+                    return True
+
+                self.console.print(f"\n[yellow]⌨️ ANDRO is pressing key: '{key}'[/yellow]")
+                result = press_key(key)
+                msg = result.get("message", "")
+                if result.get("success"):
+                    self.console.print(f"\n[bold green]✅ ANDRO: {msg}[/bold green]\n")
+                    if self.on_message:
+                        self.on_message(f"⌨️ {msg}")
+                    log_activity("DESKTOP", f"Pressed key '{key}'")
+                    speak(msg)
+                    return True
+                else:
+                    self.console.print(f"\n[bold red]❌ ANDRO: {msg}[/bold red]\n")
+                    if self.on_message:
+                        self.on_message(f"❌ {msg}")
+                    log_activity("DESKTOP_ERROR", msg)
+                    speak(msg)
+                    return False
+
+            # 4. KEYBOARD SHORTCUT
+            elif tool_name == "keyboard_shortcut":
+                shortcut = args.get("shortcut") or ""
+                shortcut = str(shortcut).strip()
+                if not shortcut:
+                    self.andro_say("Which shortcut should I press?")
+                    return True
+
+                self.console.print(f"\n[yellow]⌨️ ANDRO is pressing shortcut: '{shortcut}'[/yellow]")
+                result = keyboard_shortcut(shortcut)
+                msg = result.get("message", "")
+                if result.get("success"):
+                    self.console.print(f"\n[bold green]✅ ANDRO: {msg}[/bold green]\n")
+                    if self.on_message:
+                        self.on_message(f"⌨️ {msg}")
+                    log_activity("DESKTOP", f"Executed shortcut '{shortcut}'")
+                    speak(msg)
+                    return True
+                else:
+                    self.console.print(f"\n[bold red]❌ ANDRO: {msg}[/bold red]\n")
+                    if self.on_message:
+                        self.on_message(f"❌ {msg}")
+                    log_activity("DESKTOP_ERROR", msg)
+                    speak(msg)
+                    return False
+
+            # 5. TAKE SCREENSHOT
+            elif tool_name == "take_screenshot":
+                filename = args.get("filename") or ""
+                self.console.print("\n[yellow]📸 ANDRO is capturing screenshot...[/yellow]")
+                result = take_screenshot(filename)
+                msg = result.get("message", "")
+                if result.get("success"):
+                    self.console.print(f"\n[bold green]✅ ANDRO: {msg}[/bold green]\n")
+                    if self.on_message:
+                        self.on_message(f"📸 {msg}")
+                    log_activity("DESKTOP", "Screenshot captured")
+                    speak("Screenshot taken successfully.")
+                    return True
+                else:
+                    self.console.print(f"\n[bold red]❌ ANDRO: {msg}[/bold red]\n")
+                    if self.on_message:
+                        self.on_message(f"❌ {msg}")
+                    log_activity("DESKTOP_ERROR", msg)
+                    speak(msg)
+                    return False
+
+            # 6. MOUSE CLICK
+            elif tool_name == "mouse_click":
+                button = args.get("button") or "left"
+                clicks = args.get("clicks") or 1
+                result = mouse_click(button=button, clicks=int(clicks))
+                msg = result.get("message", "")
+                if result.get("success"):
+                    self.console.print(f"\n[bold green]✅ ANDRO: {msg}[/bold green]\n")
+                    if self.on_message:
+                        self.on_message(f"🖱️ {msg}")
+                    log_activity("DESKTOP", f"Mouse click {button} x{clicks}")
+                    speak(msg)
+                    return True
+                else:
+                    self.console.print(f"\n[bold red]❌ ANDRO: {msg}[/bold red]\n")
+                    if self.on_message:
+                        self.on_message(f"❌ {msg}")
+                    log_activity("DESKTOP_ERROR", msg)
+                    speak(msg)
+                    return False
+
+            # 7. MOUSE MOVE
+            elif tool_name == "mouse_move":
+                x = args.get("x") or 0
+                y = args.get("y") or 0
+                result = mouse_move(int(x), int(y))
+                msg = result.get("message", "")
+                if result.get("success"):
+                    self.console.print(f"\n[bold green]✅ ANDRO: {msg}[/bold green]\n")
+                    if self.on_message:
+                        self.on_message(f"🖱️ {msg}")
+                    log_activity("DESKTOP", f"Mouse move ({x}, {y})")
+                    speak(msg)
+                    return True
+                else:
+                    self.console.print(f"\n[bold red]❌ ANDRO: {msg}[/bold red]\n")
+                    if self.on_message:
+                        self.on_message(f"❌ {msg}")
+                    log_activity("DESKTOP_ERROR", msg)
+                    speak(msg)
+                    return False
+
+            # 8. FILE SEARCH
+            elif tool_name == "search_files":
+                query = args.get("query") or args.get("search_query") or ""
+                query = str(query).strip()
+                if not query:
+                    self.andro_say("What file or folder would you like me to search for?")
+                    return True
+
+                self.console.print(f"\n[yellow]🔍 ANDRO is searching for: {query}[/yellow]")
+                results = find_files(query)
+                if results:
+                    self.console.print("\n[bold green]📂 Results found:[/bold green]\n")
+                    speak(f"I found {len(results)} matching files or folders.")
+                    lines = [f"🔍 Found {len(results)} results for '{query}':"]
+                    for index, result in enumerate(results[:5], start=1):
+                        self.console.print(f"{index}. [{result['type'].upper()}] {result['name']}")
+                        self.console.print(f"   📍 {result['path']}\n")
+                        lines.append(f"{index}. **{result['name']}** ({result['type']})\n   📍 `{result['path']}`")
+                    if self.on_message:
+                        self.on_message("\n".join(lines))
+                    log_activity("FILES", f"Found {len(results)} results for '{query}'")
+                    return True
+                else:
+                    message = "No matching files or folders were found."
+                    self.console.print(f"\n[bold red]❌ {message}[/bold red]\n")
+                    if self.on_message:
+                        self.on_message(f"❌ {message}")
+                    log_activity("FILES", f"No results for '{query}'")
+                    speak(message)
+                    return True
+
+            # 9. OPEN APPLICATION
+            elif tool_name == "open_app":
+                app_name = args.get("app_name") or args.get("name") or ""
+                app_name = str(app_name).strip()
+                if not app_name:
+                    self.andro_say("Which application would you like me to open?")
+                    return True
+
+                self.console.print(f"\n[yellow]💻 ANDRO is opening: {app_name}[/yellow]")
+                result = open_app(app_name)
+                msg = result.get("message", "")
+                if result.get("success"):
+                    self.console.print(f"\n[bold green]✅ ANDRO: {msg}[/bold green]\n")
+                    if self.on_message:
+                        self.on_message(f"💻 {msg}")
+                    log_activity("APP", f"Opened application '{app_name}'")
+                    speak(msg)
+                    return True
+                else:
+                    self.console.print(f"\n[bold red]❌ ANDRO: {msg}[/bold red]\n")
+                    if self.on_message:
+                        self.on_message(f"❌ {msg}")
+                    log_activity("APP_ERROR", msg)
+                    speak(msg)
+                    return False
+
+            # 10. PLAY FIRST YOUTUBE VIDEO
+            elif tool_name == "play_youtube_video":
+                query = args.get("query") or args.get("search_query") or ""
+                query = str(query).strip()
+                if not query:
+                    self.andro_say("What video or topic would you like me to play on YouTube?")
+                    return True
+
+                self.console.print(f"\n[yellow]🎬 ANDRO is searching YouTube and playing the first video: '{query}'[/yellow]")
+                result = play_first_video(query)
+                msg = result.get("message", "")
+                if result.get("success"):
+                    self.console.print(f"\n[bold green]✅ ANDRO: {msg}[/bold green]\n")
+                    if self.on_message:
+                        self.on_message(f"🎬 {msg}")
+                    log_activity("YOUTUBE", f"Played first video for '{query}'")
+                    speak(msg)
+                    return True
+                else:
+                    self.console.print(f"\n[bold red]❌ ANDRO: {msg}[/bold red]\n")
+                    if self.on_message:
+                        self.on_message(f"❌ {msg}")
+                    log_activity("YOUTUBE_ERROR", msg)
+                    speak(msg)
+                    return False
+
+            # 11. YOUTUBE SEARCH
+            elif tool_name == "search_youtube":
+                query = args.get("query") or args.get("search_query") or ""
+                query = str(query).strip()
+                if not query:
+                    self.andro_say("What would you like me to search on YouTube?")
+                    return True
+
+                self.console.print(f"\n[yellow]🎬 ANDRO is searching YouTube for: '{query}'[/yellow]")
+                result = search_youtube(query)
+                msg = result.get("message", "")
+                if result.get("success"):
+                    self.console.print(f"\n[bold green]✅ ANDRO: {msg}[/bold green]\n")
+                    if self.on_message:
+                        self.on_message(f"🎬 {msg}")
+                    log_activity("YOUTUBE", f"Searched YouTube for '{query}'")
+                    speak(msg)
+                    return True
+                else:
+                    self.console.print(f"\n[bold red]❌ ANDRO: {msg}[/bold red]\n")
+                    if self.on_message:
+                        self.on_message(f"❌ {msg}")
+                    log_activity("YOUTUBE_ERROR", msg)
+                    speak(msg)
+                    return False
+
+            # 12. GOOGLE SEARCH
+            elif tool_name == "search_google":
+                query = args.get("query") or args.get("search_query") or ""
+                query = str(query).strip()
+                if not query:
+                    self.andro_say("What would you like me to search on Google?")
+                    return True
+
+                self.console.print(f"\n[yellow]🔎 ANDRO is searching Google for: '{query}'[/yellow]")
+                result = search_google(query)
+                msg = result.get("message", "")
+                if result.get("success"):
+                    self.console.print(f"\n[bold green]✅ ANDRO: {msg}[/bold green]\n")
+                    if self.on_message:
+                        self.on_message(f"🔎 {msg}")
+                    log_activity("GOOGLE", f"Searched Google for '{query}'")
+                    speak(msg)
+                    return True
+                else:
+                    self.console.print(f"\n[bold red]❌ ANDRO: {msg}[/bold red]\n")
+                    if self.on_message:
+                        self.on_message(f"❌ {msg}")
+                    log_activity("GOOGLE_ERROR", msg)
+                    speak(msg)
+                    return False
+
+            # 13. OPEN WEBSITE / URL
+            elif tool_name == "open_website":
+                url = args.get("url") or args.get("website") or ""
+                url = str(url).strip()
+                if not url:
+                    self.andro_say("Which website would you like me to open?")
+                    return True
+
+                self.console.print(f"\n[yellow]🌐 ANDRO is opening website: {url}[/yellow]")
+                result = open_website(url)
+                msg = result.get("message", "")
+                if result.get("success"):
+                    self.console.print(f"\n[bold green]✅ ANDRO: {msg}[/bold green]\n")
+                    if self.on_message:
+                        self.on_message(f"🌐 {msg}")
+                    log_activity("BROWSER", f"Opened website '{url}'")
+                    speak(msg)
+                    return True
+                else:
+                    self.console.print(f"\n[bold red]❌ ANDRO: {msg}[/bold red]\n")
+                    if self.on_message:
+                        self.on_message(f"❌ {msg}")
+                    log_activity("BROWSER_ERROR", msg)
+                    speak(msg)
+                    return False
+
+            # 14. GIT STATUS
+            elif tool_name == "git_status":
+                if not is_git_repository(str(self.project_path)):
+                    message = "This project is not a Git repository."
+                    self.console.print(f"\n[bold red]❌ {message}[/bold red]\n")
+                    if self.on_message:
+                        self.on_message(f"❌ {message}")
+                    speak(message)
+                    return True
+
+                self.console.print("\n[yellow]🔍 ANDRO is checking Git status...[/yellow]")
+                result = git_status(str(self.project_path))
+                self.print_git_result("Git Status", result)
                 return True
 
-            self.console.print(f"\n[yellow]⌨️ ANDRO is typing text: '{text_to_type}'[/yellow]")
-            result = type_text(text_to_type)
-            msg = result.get("message", "")
-            if result.get("success"):
-                self.console.print(f"\n[bold green]✅ ANDRO: {msg}[/bold green]\n")
-                if self.on_message:
-                    self.on_message(f"⌨️ {msg}")
-                speak(msg)
-            else:
-                self.console.print(f"\n[bold red]❌ ANDRO: {msg}[/bold red]\n")
-                if self.on_message:
-                    self.on_message(f"❌ {msg}")
-                speak(msg)
-            return True
+            # 15. GIT ADD
+            elif tool_name in ["git_add", "git_add_all"]:
+                if not is_git_repository(str(self.project_path)):
+                    message = "This project is not a Git repository."
+                    self.console.print(f"\n[bold red]❌ {message}[/bold red]\n")
+                    if self.on_message:
+                        self.on_message(f"❌ {message}")
+                    speak(message)
+                    return True
 
-        # ---------------------------------
-        # 3. PRESS KEY
-        # ---------------------------------
-        elif tool_name == "press_key":
-            key = args.get("key") or ""
-            key = str(key).strip()
-            if not key:
-                self.andro_say("Which key should I press?")
+                self.console.print("\n[yellow]➕ ANDRO is staging changes...[/yellow]")
+                result = git_add_all(str(self.project_path))
+                self.print_git_result("Git Add", result)
                 return True
 
-            self.console.print(f"\n[yellow]⌨️ ANDRO is pressing key: '{key}'[/yellow]")
-            result = press_key(key)
-            msg = result.get("message", "")
-            if result.get("success"):
-                self.console.print(f"\n[bold green]✅ ANDRO: {msg}[/bold green]\n")
-                if self.on_message:
-                    self.on_message(f"⌨️ {msg}")
-                speak(msg)
-            else:
-                self.console.print(f"\n[bold red]❌ ANDRO: {msg}[/bold red]\n")
-                if self.on_message:
-                    self.on_message(f"❌ {msg}")
-                speak(msg)
-            return True
+            # 16. GIT COMMIT
+            elif tool_name == "git_commit":
+                if not is_git_repository(str(self.project_path)):
+                    message = "This project is not a Git repository."
+                    self.console.print(f"\n[bold red]❌ {message}[/bold red]\n")
+                    if self.on_message:
+                        self.on_message(f"❌ {message}")
+                    speak(message)
+                    return True
 
-        # ---------------------------------
-        # 4. KEYBOARD SHORTCUT
-        # ---------------------------------
-        elif tool_name == "keyboard_shortcut":
-            shortcut = args.get("shortcut") or ""
-            shortcut = str(shortcut).strip()
-            if not shortcut:
-                self.andro_say("Which shortcut should I press?")
+                commit_message = args.get("message") or args.get("commit_message") or ""
+                commit_message = str(commit_message).strip()
+                if not commit_message:
+                    message = "Please provide a commit message."
+                    self.console.print(f"\n[yellow]{message}[/yellow]")
+                    self.console.print("[cyan]Example: commit Added new feature[/cyan]\n")
+                    if self.on_message:
+                        self.on_message(f"⚠️ {message} Example: `commit Added new feature`")
+                    speak(message)
+                    return True
+
+                self.console.print(f"\n[yellow]💾 ANDRO is creating commit: {commit_message}[/yellow]")
+                result = git_commit(str(self.project_path), commit_message)
+                self.print_git_result("Git Commit", result)
                 return True
 
-            self.console.print(f"\n[yellow]⌨️ ANDRO is pressing shortcut: '{shortcut}'[/yellow]")
-            result = keyboard_shortcut(shortcut)
-            msg = result.get("message", "")
-            if result.get("success"):
-                self.console.print(f"\n[bold green]✅ ANDRO: {msg}[/bold green]\n")
-                if self.on_message:
-                    self.on_message(f"⌨️ {msg}")
-                speak(msg)
-            else:
-                self.console.print(f"\n[bold red]❌ ANDRO: {msg}[/bold red]\n")
-                if self.on_message:
-                    self.on_message(f"❌ {msg}")
-                speak(msg)
-            return True
+            # 17. GIT PUSH
+            elif tool_name == "git_push":
+                if not is_git_repository(str(self.project_path)):
+                    message = "This project is not a Git repository."
+                    self.console.print(f"\n[bold red]❌ {message}[/bold red]\n")
+                    if self.on_message:
+                        self.on_message(f"❌ {message}")
+                    speak(message)
+                    return True
 
-        # ---------------------------------
-        # 5. TAKE SCREENSHOT
-        # ---------------------------------
-        elif tool_name == "take_screenshot":
-            filename = args.get("filename") or ""
-            self.console.print("\n[yellow]📸 ANDRO is capturing screenshot...[/yellow]")
-            result = take_screenshot(filename)
-            msg = result.get("message", "")
-            if result.get("success"):
-                self.console.print(f"\n[bold green]✅ ANDRO: {msg}[/bold green]\n")
+                warning = "This will push commits to the configured GitHub repository. Say yes to continue or no to cancel."
+                self.console.print("\n[bold yellow]⚠️ This will push commits to the configured remote repository.[/bold yellow]")
+                self.console.print("[yellow]Type YES to continue or NO to cancel.[/yellow]\n")
                 if self.on_message:
-                    self.on_message(f"📸 {msg}")
-                speak("Screenshot taken successfully.")
-            else:
-                self.console.print(f"\n[bold red]❌ ANDRO: {msg}[/bold red]\n")
-                if self.on_message:
-                    self.on_message(f"❌ {msg}")
-                speak(msg)
-            return True
-
-        # ---------------------------------
-        # 6. MOUSE CLICK
-        # ---------------------------------
-        elif tool_name == "mouse_click":
-            button = args.get("button") or "left"
-            clicks = args.get("clicks") or 1
-            result = mouse_click(button=button, clicks=int(clicks))
-            msg = result.get("message", "")
-            if result.get("success"):
-                self.console.print(f"\n[bold green]✅ ANDRO: {msg}[/bold green]\n")
-                if self.on_message:
-                    self.on_message(f"🖱️ {msg}")
-                speak(msg)
-            else:
-                self.console.print(f"\n[bold red]❌ ANDRO: {msg}[/bold red]\n")
-                if self.on_message:
-                    self.on_message(f"❌ {msg}")
-                speak(msg)
-            return True
-
-        # ---------------------------------
-        # 7. MOUSE MOVE
-        # ---------------------------------
-        elif tool_name == "mouse_move":
-            x = args.get("x") or 0
-            y = args.get("y") or 0
-            result = mouse_move(int(x), int(y))
-            msg = result.get("message", "")
-            if result.get("success"):
-                self.console.print(f"\n[bold green]✅ ANDRO: {msg}[/bold green]\n")
-                if self.on_message:
-                    self.on_message(f"🖱️ {msg}")
-                speak(msg)
-            else:
-                self.console.print(f"\n[bold red]❌ ANDRO: {msg}[/bold red]\n")
-                if self.on_message:
-                    self.on_message(f"❌ {msg}")
-                speak(msg)
-            return True
-
-        # ---------------------------------
-        # 8. FILE SEARCH
-        # ---------------------------------
-        elif tool_name == "search_files":
-            query = args.get("query") or args.get("search_query") or ""
-            query = str(query).strip()
-            if not query:
-                self.andro_say("What file or folder would you like me to search for?")
+                    self.on_message("⚠️ **Push Confirmation:** This will push commits to GitHub. Type/say **YES** to continue or **NO** to cancel.")
+                speak(warning)
+                if trigger_push_confirmation:
+                    trigger_push_confirmation()
                 return True
 
-            self.console.print(f"\n[yellow]🔍 ANDRO is searching for: {query}[/yellow]")
-            results = find_files(query)
-            if results:
-                self.console.print("\n[bold green]📂 Results found:[/bold green]\n")
-                speak(f"I found {len(results)} matching files or folders.")
-                lines = [f"🔍 Found {len(results)} results for '{query}':"]
-                for index, result in enumerate(results[:5], start=1):
-                    self.console.print(f"{index}. [{result['type'].upper()}] {result['name']}")
-                    self.console.print(f"   📍 {result['path']}\n")
-                    lines.append(f"{index}. **{result['name']}** ({result['type']})\n   📍 `{result['path']}`")
-                if self.on_message:
-                    self.on_message("\n".join(lines))
-            else:
-                message = "No matching files or folders were found."
-                self.console.print(f"\n[bold red]❌ {message}[/bold red]\n")
-                if self.on_message:
-                    self.on_message(f"❌ {message}")
-                speak(message)
-            return True
-
-        # ---------------------------------
-        # 9. OPEN APPLICATION
-        # ---------------------------------
-        elif tool_name == "open_app":
-            app_name = args.get("app_name") or args.get("name") or ""
-            app_name = str(app_name).strip()
-            if not app_name:
-                self.andro_say("Which application would you like me to open?")
-                return True
-
-            self.console.print(f"\n[yellow]💻 ANDRO is opening: {app_name}[/yellow]")
-            result = open_app(app_name)
-            msg = result.get("message", "")
-            if result.get("success"):
-                self.console.print(f"\n[bold green]✅ ANDRO: {msg}[/bold green]\n")
-                if self.on_message:
-                    self.on_message(f"💻 {msg}")
-                speak(msg)
-            else:
-                self.console.print(f"\n[bold red]❌ ANDRO: {msg}[/bold red]\n")
-                if self.on_message:
-                    self.on_message(f"❌ {msg}")
-                speak(msg)
-            return True
-
-        # ---------------------------------
-        # 10. PLAY FIRST YOUTUBE VIDEO
-        # ---------------------------------
-        elif tool_name == "play_youtube_video":
-            query = args.get("query") or args.get("search_query") or ""
-            query = str(query).strip()
-            if not query:
-                self.andro_say("What video or topic would you like me to play on YouTube?")
-                return True
-
-            self.console.print(f"\n[yellow]🎬 ANDRO is searching YouTube and playing the first video: '{query}'[/yellow]")
-            result = play_first_video(query)
-            msg = result.get("message", "")
-            if result.get("success"):
-                self.console.print(f"\n[bold green]✅ ANDRO: {msg}[/bold green]\n")
-                if self.on_message:
-                    self.on_message(f"🎬 {msg}")
-                speak(msg)
-            else:
-                self.console.print(f"\n[bold red]❌ ANDRO: {msg}[/bold red]\n")
-                if self.on_message:
-                    self.on_message(f"❌ {msg}")
-                speak(msg)
-            return True
-
-        # ---------------------------------
-        # 11. YOUTUBE SEARCH
-        # ---------------------------------
-        elif tool_name == "search_youtube":
-            query = args.get("query") or args.get("search_query") or ""
-            query = str(query).strip()
-            if not query:
-                self.andro_say("What would you like me to search on YouTube?")
-                return True
-
-            self.console.print(f"\n[yellow]🎬 ANDRO is searching YouTube for: '{query}'[/yellow]")
-            result = search_youtube(query)
-            msg = result.get("message", "")
-            if result.get("success"):
-                self.console.print(f"\n[bold green]✅ ANDRO: {msg}[/bold green]\n")
-                if self.on_message:
-                    self.on_message(f"🎬 {msg}")
-                speak(msg)
-            else:
-                self.console.print(f"\n[bold red]❌ ANDRO: {msg}[/bold red]\n")
-                if self.on_message:
-                    self.on_message(f"❌ {msg}")
-                speak(msg)
-            return True
-
-        # ---------------------------------
-        # 12. GOOGLE SEARCH
-        # ---------------------------------
-        elif tool_name == "search_google":
-            query = args.get("query") or args.get("search_query") or ""
-            query = str(query).strip()
-            if not query:
-                self.andro_say("What would you like me to search on Google?")
-                return True
-
-            self.console.print(f"\n[yellow]🔎 ANDRO is searching Google for: '{query}'[/yellow]")
-            result = search_google(query)
-            msg = result.get("message", "")
-            if result.get("success"):
-                self.console.print(f"\n[bold green]✅ ANDRO: {msg}[/bold green]\n")
-                if self.on_message:
-                    self.on_message(f"🔎 {msg}")
-                speak(msg)
-            else:
-                self.console.print(f"\n[bold red]❌ ANDRO: {msg}[/bold red]\n")
-                if self.on_message:
-                    self.on_message(f"❌ {msg}")
-                speak(msg)
-            return True
-
-        # ---------------------------------
-        # 13. OPEN WEBSITE / URL
-        # ---------------------------------
-        elif tool_name == "open_website":
-            url = args.get("url") or args.get("website") or ""
-            url = str(url).strip()
-            if not url:
-                self.andro_say("Which website would you like me to open?")
-                return True
-
-            self.console.print(f"\n[yellow]🌐 ANDRO is opening website: {url}[/yellow]")
-            result = open_website(url)
-            msg = result.get("message", "")
-            if result.get("success"):
-                self.console.print(f"\n[bold green]✅ ANDRO: {msg}[/bold green]\n")
-                if self.on_message:
-                    self.on_message(f"🌐 {msg}")
-                speak(msg)
-            else:
-                self.console.print(f"\n[bold red]❌ ANDRO: {msg}[/bold red]\n")
-                if self.on_message:
-                    self.on_message(f"❌ {msg}")
-                speak(msg)
-            return True
-
-        # ---------------------------------
-        # 14. GIT STATUS
-        # ---------------------------------
-        elif tool_name == "git_status":
-            if not is_git_repository(str(self.project_path)):
-                message = "This project is not a Git repository."
-                self.console.print(f"\n[bold red]❌ {message}[/bold red]\n")
-                if self.on_message:
-                    self.on_message(f"❌ {message}")
-                speak(message)
-                return True
-
-            self.console.print("\n[yellow]🔍 ANDRO is checking Git status...[/yellow]")
-            result = git_status(str(self.project_path))
-            self.print_git_result("Git Status", result)
-            return True
-
-        # ---------------------------------
-        # 15. GIT ADD
-        # ---------------------------------
-        elif tool_name in ["git_add", "git_add_all"]:
-            if not is_git_repository(str(self.project_path)):
-                message = "This project is not a Git repository."
-                self.console.print(f"\n[bold red]❌ {message}[/bold red]\n")
-                if self.on_message:
-                    self.on_message(f"❌ {message}")
-                speak(message)
-                return True
-
-            self.console.print("\n[yellow]➕ ANDRO is staging changes...[/yellow]")
-            result = git_add_all(str(self.project_path))
-            self.print_git_result("Git Add", result)
-            return True
-
-        # ---------------------------------
-        # 16. GIT COMMIT
-        # ---------------------------------
-        elif tool_name == "git_commit":
-            if not is_git_repository(str(self.project_path)):
-                message = "This project is not a Git repository."
-                self.console.print(f"\n[bold red]❌ {message}[/bold red]\n")
-                if self.on_message:
-                    self.on_message(f"❌ {message}")
-                speak(message)
-                return True
-
-            commit_message = args.get("message") or args.get("commit_message") or ""
-            commit_message = str(commit_message).strip()
-            if not commit_message:
-                message = "Please provide a commit message."
-                self.console.print(f"\n[yellow]{message}[/yellow]")
-                self.console.print("[cyan]Example: commit Added new feature[/cyan]\n")
-                if self.on_message:
-                    self.on_message(f"⚠️ {message} Example: `commit Added new feature`")
-                speak(message)
-                return True
-
-            self.console.print(f"\n[yellow]💾 ANDRO is creating commit: {commit_message}[/yellow]")
-            result = git_commit(str(self.project_path), commit_message)
-            self.print_git_result("Git Commit", result)
-            return True
-
-        # ---------------------------------
-        # 17. GIT PUSH
-        # ---------------------------------
-        elif tool_name == "git_push":
-            if not is_git_repository(str(self.project_path)):
-                message = "This project is not a Git repository."
-                self.console.print(f"\n[bold red]❌ {message}[/bold red]\n")
-                if self.on_message:
-                    self.on_message(f"❌ {message}")
-                speak(message)
-                return True
-
-            warning = "This will push commits to the configured GitHub repository. Say yes to continue or no to cancel."
-            self.console.print("\n[bold yellow]⚠️ This will push commits to the configured remote repository.[/bold yellow]")
-            self.console.print("[yellow]Type YES to continue or NO to cancel.[/yellow]\n")
+        except Exception as tool_err:
+            log_activity("TOOL_ERROR", f"Exception in {tool_name}: {tool_err}")
+            err_msg = f"Could not complete action '{tool_name}'."
+            self.console.print(f"\n[bold red]❌ {err_msg}[/bold red]\n")
             if self.on_message:
-                self.on_message("⚠️ **Push Confirmation:** This will push commits to GitHub. Type/say **YES** to continue or **NO** to cancel.")
-            speak(warning)
-            if trigger_push_confirmation:
-                trigger_push_confirmation()
-            return True
+                self.on_message(f"❌ {err_msg}")
+            speak(err_msg)
+            return False
 
         return False
 
@@ -775,7 +797,7 @@ class AndroAgent:
         """Decompose compound multi-step commands into ordered executable actions in < 1ms."""
         text = user_input.lower().strip()
 
-        # Multi-Step Example: "Open Notepad and type Hello from ANDRO" / "Notepad kholo aur hello likho"
+        # Multi-Step: "Open Notepad and type Hello from ANDRO"
         if ("open notepad" in text or "notepad khol" in text) and any(k in text for k in ["type ", "likho ", "write "]):
             type_part = ""
             for kw in ["type ", "likho ", "write "]:
@@ -785,24 +807,29 @@ class AndroAgent:
             if type_part:
                 return [
                     {"tool": "open_app", "args": {"app_name": "notepad"}, "title": "Opening Notepad"},
-                    {"tool": "_wait", "args": {"seconds": 0.2}, "title": "Focusing Notepad window"},
+                    {"tool": "_wait", "args": {"seconds": 0.08}, "title": "Focusing Notepad window"},
                     {"tool": "type_text", "args": {"text": type_part}, "title": f"Typing '{type_part}'"},
                 ]
 
-        # Multi-Step Example: "Open Chrome, search Python tutorials, then open YouTube and search Techno Gamerz"
-        if ("open chrome" in text or "chrome" in text) and "open youtube" in text and ("search" in text or "play" in text):
+        # Multi-Step: "Open Chrome, search Python tutorials, then open YouTube and search Techno Gamerz"
+        # Support separators: and, then, after that, phir, aur, uske baad
+        if any(sep in text for sep in [" and open ", ", then ", " then ", " after that ", " phir ", " aur ", " uske baad "]):
             steps = []
+            if "open chrome" in text or "chrome khol" in text:
+                steps.append({"tool": "open_app", "args": {"app_name": "chrome"}, "title": "Opening Chrome"})
             if "search" in text and "python" in text:
                 steps.append({"tool": "search_google", "args": {"query": "Python tutorials"}, "title": "Searching Python tutorials on Google"})
-            if "techno gamerz" in text:
+            if "youtube" in text:
                 if "play" in text:
-                    steps.append({"tool": "play_youtube_video", "args": {"query": "Techno Gamerz"}, "title": "Searching YouTube and playing Techno Gamerz"})
-                else:
+                    steps.append({"tool": "play_youtube_video", "args": {"query": "Techno Gamerz"}, "title": "Searching YouTube and playing video"})
+                elif "search" in text or "techno" in text:
                     steps.append({"tool": "search_youtube", "args": {"query": "Techno Gamerz"}, "title": "Searching Techno Gamerz on YouTube"})
-            if steps:
+                else:
+                    steps.append({"tool": "open_website", "args": {"url": "https://www.youtube.com"}, "title": "Opening YouTube"})
+            if len(steps) >= 2:
                 return steps
 
-        # Multi-Step Example: "Take a screenshot and tell me what is on my screen" / "Screenshot lo aur explain karo"
+        # Multi-Step: "Take a screenshot and tell me what is on my screen"
         if ("screenshot" in text or "screen" in text) and any(k in text for k in ["tell me", "explain", "kya hai", "analyze", "problem", "error"]):
             return [
                 {"tool": "analyze_screen", "args": {"prompt": user_input}, "title": "Analyzing screen contents and errors"},
@@ -811,10 +838,11 @@ class AndroAgent:
         return []
 
     def execute_multi_step_plan(self, plan: list, trigger_push_confirmation=None) -> bool:
-        """Execute an ordered multi-step plan with live progress tracking."""
+        """Execute an ordered multi-step plan with live progress tracking and failure stopping."""
         self.stop_requested = False
         total_steps = len(plan)
         self.console.print(f"\n[bold magenta]🧠 ANDRO is planning the task ({total_steps} steps)...[/bold magenta]\n")
+        log_activity("PLAN", f"Executing multi-step plan ({total_steps} steps)")
 
         for index, step in enumerate(plan, start=1):
             if self.stop_requested:
@@ -828,15 +856,29 @@ class AndroAgent:
             title = step.get("title", f"Step {index}")
 
             self.console.print(f"[bold cyan]Step {index}/{total_steps}: {title}...[/bold cyan]")
+            if self.on_message:
+                self.on_message(f"⏳ **Step {index}/{total_steps}:** {title}...")
 
             if tool_name == "_wait":
                 time.sleep(args.get("seconds", 0.2))
+                success = True
             else:
-                self.execute_tool(tool_name, args, trigger_push_confirmation)
+                success = self.execute_tool(tool_name, args, trigger_push_confirmation)
 
-            self.console.print(f"[bold green]✅ Completed Step {index}/{total_steps}[/bold green]\n")
+            if success:
+                self.console.print(f"[bold green]✅ Completed Step {index}/{total_steps}[/bold green]\n")
+            else:
+                fail_msg = f"❌ Step {index}/{total_steps} failed: Could not complete '{title}'."
+                self.console.print(f"\n[bold red]{fail_msg}[/bold red]")
+                self.console.print("[yellow]⚠️ Halting remaining dependent steps.[/yellow]\n")
+                if self.on_message:
+                    self.on_message(f"{fail_msg}\n⚠️ Halting remaining steps.")
+                speak(f"Step {index} failed. Halting remaining steps.")
+                return False
 
         self.console.print("[bold green]🎉 Task completed successfully.[/bold green]\n")
+        if self.on_message:
+            self.on_message("🎉 **Task completed successfully.**")
         return True
 
     def _parse_direct_intent(self, user_input: str) -> tuple:
@@ -1080,6 +1122,7 @@ class AndroAgent:
             return
 
         self.stop_requested = False
+        log_activity("USER_INPUT", user_input)
 
         # 1. Instant check for compound multi-step tasks (< 1ms)
         multi_step_plan = self._decompose_multi_step(user_input)
@@ -1145,8 +1188,9 @@ class AndroAgent:
 
         except Exception as error:
             error_str = str(error)
-            if "connection" in error_str.lower() or "connect" in error_str.lower():
-                msg = "Ollama is not running or unreachable. Please ensure Ollama is started with model 'qwen3:8b'."
+            log_activity("AI_ERROR", error_str)
+            if "connection" in error_str.lower() or "connect" in error_str.lower() or "111" in error_str:
+                msg = "ANDRO could not connect to Ollama. Please ensure Ollama is running with model 'qwen3:8b'."
             else:
                 msg = f"AI Error: {error_str}"
             self.console.print(f"\n[bold red]❌ {msg}[/bold red]\n")
