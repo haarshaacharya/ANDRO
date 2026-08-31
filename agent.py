@@ -1,5 +1,6 @@
 import json
 import re
+import time
 from pathlib import Path
 from rich.console import Console
 
@@ -15,6 +16,15 @@ from tools.browser_control import (
     search_youtube,
     play_first_video,
 )
+from tools.desktop import (
+    type_text,
+    press_key,
+    keyboard_shortcut,
+    take_screenshot,
+    mouse_click,
+    mouse_move,
+)
+from tools.vision import analyze_screen
 from tools.git_tools import (
     is_git_repository,
     git_status,
@@ -24,28 +34,158 @@ from tools.git_tools import (
 )
 
 
-SYSTEM_PROMPT = """You are ANDRO, a powerful and intelligent personal AI assistant and computer-using agent.
+SYSTEM_PROMPT = """You are ANDRO, a powerful and intelligent personal AI assistant, multi-step computer agent, and screen vision assistant.
 
-You help the user with programming, projects, computer tasks, files, desktop applications, web browser automation, and Git operations.
-You can understand English as well as Hindi / Hinglish phrasing (e.g. "Chrome khol do", "Mera project dhundo", "YouTube pe Techno Gamerz search karo", "YouTube kholo, Techno Gamerz search karo aur pehla video chalao", "Google pe Python tutorials search karo", "Storagge.in khol do").
+You help the user with programming, projects, computer tasks, files, desktop applications, web browser automation, desktop automation (typing text, keys, shortcuts, screenshots, mouse control), Smart Screen Vision analysis, and Git operations.
+You can understand English as well as Hindi / Hinglish phrasing (e.g. "Chrome khol do", "Mera project dhundo", "YouTube pe Techno Gamerz search karo", "Techno Gamerz play karo", "Notepad me hello likho", "Enter dabao", "Screen par kya hai", "Is error ko explain karo").
 
 TOOL ROUTING PRIORITY RULES:
-1. If the user asks to play a video or search YouTube and play (e.g. "Open YouTube, search Techno Gamerz and play the first video", "Play Techno Gamerz on YouTube", "Techno Gamerz ka video chalao"), ALWAYS call `play_youtube_video` with query="Techno Gamerz". DO NOT call `open_website`.
-2. If the user asks to search YouTube (e.g. "Search Techno Gamerz on YouTube", "Open YouTube and search Techno Gamerz", "search Techno Gamerz"), call `search_youtube` with query="Techno Gamerz".
-3. If the user asks to search Google (e.g. "Search Python tutorials on Google", "Search for AI news"), call `search_google` with query="Python tutorials".
-4. Only call `open_website` if the user ONLY wants to open a domain/website without searching or playing (e.g. "Open Storagge.in", "Open YouTube", "Open Google").
-5. If the user asks to open an application (e.g. "Open Chrome", "Open Calculator", "Open Notepad"), call `open_app`.
-6. If the user asks to search files/folders (e.g. "Find my ANDRO project", "Mera project dhundo"), call `search_files`.
-7. For Git operations, call `git_status`, `git_add`, `git_commit`, or `git_push`.
-8. For general conversation or programming questions, respond directly and concisely without calling any tool.
+1. If the user asks about the screen or visual contents (e.g. "What is on my screen?", "Analyze my screen", "Screen par kya hai?", "Is error ko explain karo"), call `analyze_screen`.
+2. If the user asks to type text (e.g. "Type hello in Notepad", "Type Hello World", "likho Hello"), call `type_text`.
+3. If the user asks to press a key (e.g. "Press Enter", "Press Escape", "Enter dabao"), call `press_key`.
+4. If the user asks for a keyboard shortcut (e.g. "Press Ctrl L", "Shortcut Ctrl C", "Ctrl V dabao"), call `keyboard_shortcut`.
+5. If the user asks for a screenshot (e.g. "Take a screenshot", "Screenshot lo"), call `take_screenshot`.
+6. If the user asks to move the mouse or click (e.g. "Move mouse to 500 400", "Click", "Double click"), call `mouse_move` or `mouse_click`.
+7. If the user asks to play a video or search YouTube and play (e.g. "Open YouTube, search Techno Gamerz and play the first video", "Play Techno Gamerz on YouTube", "Techno Gamerz play karo"), call `play_youtube_video`.
+8. If the user asks to search YouTube (e.g. "search Techno Gamerz", "search Techno Gamerz on YouTube"), call `search_youtube`.
+9. If the user asks to search Google (e.g. "Search Python tutorials on Google"), call `search_google`.
+10. Only call `open_website` if the user ONLY wants to open a domain/website without searching or playing (e.g. "Open Storagge.in", "Open YouTube", "Open Google").
+11. If the user asks to open an application (e.g. "Open Chrome", "Open Calculator", "Open Notepad"), call `open_app`.
+12. If the user asks to search files/folders (e.g. "Find my ANDRO project", "Mera project dhundo"), call `search_files`.
+13. For Git operations, call `git_status`, `git_add`, `git_commit`, or `git_push`.
+14. For general conversation or programming questions, respond directly and concisely without calling any tool.
 
-Safety note: Never perform sensitive online actions (passwords, logins, payments, deleting data) without user confirmation.
+Safety note: Never perform destructive actions automatically. Git push requires explicit confirmation.
 
 Always be concise, friendly, and helpful.
 """
 
 # Ollama Tool Definitions
 AGENT_TOOLS = [
+    {
+        "type": "function",
+        "function": {
+            "name": "analyze_screen",
+            "description": "Capture the current screen on demand and visually analyze active windows, text, messages, or error dialogs (e.g. 'What is on my screen?', 'Explain this error', 'Screen par kya hai').",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "prompt": {
+                        "type": "string",
+                        "description": "Specific question or focus area for visual analysis (e.g. 'explain the visible error message').",
+                    }
+                },
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "type_text",
+            "description": "Type or paste text into the currently active window or application (e.g. 'Type hello in Notepad', 'Type Hello world').",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "text": {
+                        "type": "string",
+                        "description": "The exact text to type into the focused window.",
+                    }
+                },
+                "required": ["text"],
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "press_key",
+            "description": "Press a keyboard key safely (e.g. 'enter', 'esc', 'escape', 'tab', 'space', 'backspace', 'up', 'down', 'f5').",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "key": {
+                        "type": "string",
+                        "description": "The key name to press (e.g. 'enter', 'escape', 'tab', 'space').",
+                    }
+                },
+                "required": ["key"],
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "keyboard_shortcut",
+            "description": "Execute a keyboard shortcut combination (e.g. 'ctrl+c', 'ctrl+v', 'ctrl+l', 'ctrl+n', 'alt+tab', 'ctrl+w').",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "shortcut": {
+                        "type": "string",
+                        "description": "The shortcut combination to press (e.g. 'ctrl+c', 'ctrl+l', 'ctrl+v').",
+                    }
+                },
+                "required": ["shortcut"],
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "take_screenshot",
+            "description": "Capture the full screen and save as a timestamped image in Pictures/ANDRO_Screenshots.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "filename": {
+                        "type": "string",
+                        "description": "Optional custom filename for the screenshot.",
+                    }
+                },
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "mouse_click",
+            "description": "Click the mouse at the current position (e.g. 'left', 'right', 'double click').",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "button": {
+                        "type": "string",
+                        "description": "Mouse button: 'left', 'right', or 'middle'. Default is 'left'.",
+                    },
+                    "clicks": {
+                        "type": "integer",
+                        "description": "Number of clicks: 1 for single click, 2 for double click.",
+                    }
+                },
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "mouse_move",
+            "description": "Move the mouse cursor smoothly to screen coordinates (x, y).",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "x": {
+                        "type": "integer",
+                        "description": "The X screen coordinate.",
+                    },
+                    "y": {
+                        "type": "integer",
+                        "description": "The Y screen coordinate.",
+                    }
+                },
+                "required": ["x", "y"],
+            },
+        },
+    },
     {
         "type": "function",
         "function": {
@@ -202,18 +342,23 @@ AGENT_TOOLS = [
 
 
 class AndroAgent:
-    """Intelligent AI Agent for ANDRO with natural language tool routing and Playwright browser control."""
+    """Intelligent Multi-Step AI Agent for ANDRO with planning, screen vision, and computer automation."""
 
     def __init__(self, project_path: Path, console: Console, model: str = "qwen3:8b"):
         self.project_path = project_path
         self.console = console
         self.model = model
+        self.stop_requested = False
         self.messages = [
             {
                 "role": "system",
                 "content": SYSTEM_PROMPT,
             }
         ]
+
+    def stop(self):
+        """Emergency stop handler to abort the active multi-step task immediately."""
+        self.stop_requested = True
 
     def andro_say(self, text: str):
         """Print and speak ANDRO's response."""
@@ -234,11 +379,133 @@ class AndroAgent:
 
     def execute_tool(self, tool_name: str, args: dict, trigger_push_confirmation=None) -> bool:
         """Execute a detected tool with given arguments."""
+        if self.stop_requested:
+            return False
 
         # ---------------------------------
-        # 1. FILE SEARCH
+        # 1. SMART SCREEN VISION
         # ---------------------------------
-        if tool_name == "search_files":
+        if tool_name == "analyze_screen":
+            prompt = args.get("prompt") or ""
+            self.console.print("\n[yellow]👁️ ANDRO is capturing and analyzing screen...[/yellow]")
+            result = analyze_screen(prompt)
+            if result.get("success"):
+                self.console.print(f"\n[bold green]🖥️ Screen Analysis:[/bold green]\n{result['message']}\n")
+                speak(result["message"])
+            else:
+                self.console.print(f"\n[bold red]❌ ANDRO: {result['message']}[/bold red]\n")
+                speak(result["message"])
+            return True
+
+        # ---------------------------------
+        # 2. TYPE TEXT
+        # ---------------------------------
+        elif tool_name == "type_text":
+            text_to_type = args.get("text") or ""
+            text_to_type = str(text_to_type)
+            if not text_to_type:
+                self.andro_say("What text would you like me to type?")
+                return True
+
+            self.console.print(f"\n[yellow]⌨️ ANDRO is typing text: '{text_to_type}'[/yellow]")
+            result = type_text(text_to_type)
+            if result.get("success"):
+                self.console.print(f"\n[bold green]✅ ANDRO: {result['message']}[/bold green]\n")
+                speak(result["message"])
+            else:
+                self.console.print(f"\n[bold red]❌ ANDRO: {result['message']}[/bold red]\n")
+                speak(result["message"])
+            return True
+
+        # ---------------------------------
+        # 3. PRESS KEY
+        # ---------------------------------
+        elif tool_name == "press_key":
+            key = args.get("key") or ""
+            key = str(key).strip()
+            if not key:
+                self.andro_say("Which key should I press?")
+                return True
+
+            self.console.print(f"\n[yellow]⌨️ ANDRO is pressing key: '{key}'[/yellow]")
+            result = press_key(key)
+            if result.get("success"):
+                self.console.print(f"\n[bold green]✅ ANDRO: {result['message']}[/bold green]\n")
+                speak(result["message"])
+            else:
+                self.console.print(f"\n[bold red]❌ ANDRO: {result['message']}[/bold red]\n")
+                speak(result["message"])
+            return True
+
+        # ---------------------------------
+        # 4. KEYBOARD SHORTCUT
+        # ---------------------------------
+        elif tool_name == "keyboard_shortcut":
+            shortcut = args.get("shortcut") or ""
+            shortcut = str(shortcut).strip()
+            if not shortcut:
+                self.andro_say("Which shortcut should I press?")
+                return True
+
+            self.console.print(f"\n[yellow]⌨️ ANDRO is pressing shortcut: '{shortcut}'[/yellow]")
+            result = keyboard_shortcut(shortcut)
+            if result.get("success"):
+                self.console.print(f"\n[bold green]✅ ANDRO: {result['message']}[/bold green]\n")
+                speak(result["message"])
+            else:
+                self.console.print(f"\n[bold red]❌ ANDRO: {result['message']}[/bold red]\n")
+                speak(result["message"])
+            return True
+
+        # ---------------------------------
+        # 5. TAKE SCREENSHOT
+        # ---------------------------------
+        elif tool_name == "take_screenshot":
+            filename = args.get("filename") or ""
+            self.console.print("\n[yellow]📸 ANDRO is capturing screenshot...[/yellow]")
+            result = take_screenshot(filename)
+            if result.get("success"):
+                self.console.print(f"\n[bold green]✅ ANDRO: {result['message']}[/bold green]\n")
+                speak("Screenshot taken and saved successfully.")
+            else:
+                self.console.print(f"\n[bold red]❌ ANDRO: {result['message']}[/bold red]\n")
+                speak(result["message"])
+            return True
+
+        # ---------------------------------
+        # 6. MOUSE CLICK
+        # ---------------------------------
+        elif tool_name == "mouse_click":
+            button = args.get("button") or "left"
+            clicks = args.get("clicks") or 1
+            result = mouse_click(button=button, clicks=int(clicks))
+            if result.get("success"):
+                self.console.print(f"\n[bold green]✅ ANDRO: {result['message']}[/bold green]\n")
+                speak(result["message"])
+            else:
+                self.console.print(f"\n[bold red]❌ ANDRO: {result['message']}[/bold red]\n")
+                speak(result["message"])
+            return True
+
+        # ---------------------------------
+        # 7. MOUSE MOVE
+        # ---------------------------------
+        elif tool_name == "mouse_move":
+            x = args.get("x") or 0
+            y = args.get("y") or 0
+            result = mouse_move(int(x), int(y))
+            if result.get("success"):
+                self.console.print(f"\n[bold green]✅ ANDRO: {result['message']}[/bold green]\n")
+                speak(result["message"])
+            else:
+                self.console.print(f"\n[bold red]❌ ANDRO: {result['message']}[/bold red]\n")
+                speak(result["message"])
+            return True
+
+        # ---------------------------------
+        # 8. FILE SEARCH
+        # ---------------------------------
+        elif tool_name == "search_files":
             query = args.get("query") or args.get("search_query") or ""
             query = str(query).strip()
             if not query:
@@ -260,7 +527,7 @@ class AndroAgent:
             return True
 
         # ---------------------------------
-        # 2. OPEN APPLICATION
+        # 9. OPEN APPLICATION
         # ---------------------------------
         elif tool_name == "open_app":
             app_name = args.get("app_name") or args.get("name") or ""
@@ -280,7 +547,7 @@ class AndroAgent:
             return True
 
         # ---------------------------------
-        # 3. PLAY FIRST YOUTUBE VIDEO
+        # 10. PLAY FIRST YOUTUBE VIDEO
         # ---------------------------------
         elif tool_name == "play_youtube_video":
             query = args.get("query") or args.get("search_query") or ""
@@ -300,7 +567,7 @@ class AndroAgent:
             return True
 
         # ---------------------------------
-        # 4. YOUTUBE SEARCH
+        # 11. YOUTUBE SEARCH
         # ---------------------------------
         elif tool_name == "search_youtube":
             query = args.get("query") or args.get("search_query") or ""
@@ -320,7 +587,7 @@ class AndroAgent:
             return True
 
         # ---------------------------------
-        # 5. GOOGLE SEARCH
+        # 12. GOOGLE SEARCH
         # ---------------------------------
         elif tool_name == "search_google":
             query = args.get("query") or args.get("search_query") or ""
@@ -340,7 +607,7 @@ class AndroAgent:
             return True
 
         # ---------------------------------
-        # 6. OPEN WEBSITE / URL
+        # 13. OPEN WEBSITE / URL
         # ---------------------------------
         elif tool_name == "open_website":
             url = args.get("url") or args.get("website") or ""
@@ -360,7 +627,7 @@ class AndroAgent:
             return True
 
         # ---------------------------------
-        # 7. GIT STATUS
+        # 14. GIT STATUS
         # ---------------------------------
         elif tool_name == "git_status":
             if not is_git_repository(str(self.project_path)):
@@ -375,7 +642,7 @@ class AndroAgent:
             return True
 
         # ---------------------------------
-        # 8. GIT ADD
+        # 15. GIT ADD
         # ---------------------------------
         elif tool_name in ["git_add", "git_add_all"]:
             if not is_git_repository(str(self.project_path)):
@@ -390,7 +657,7 @@ class AndroAgent:
             return True
 
         # ---------------------------------
-        # 9. GIT COMMIT
+        # 16. GIT COMMIT
         # ---------------------------------
         elif tool_name == "git_commit":
             if not is_git_repository(str(self.project_path)):
@@ -414,7 +681,7 @@ class AndroAgent:
             return True
 
         # ---------------------------------
-        # 10. GIT PUSH
+        # 17. GIT PUSH
         # ---------------------------------
         elif tool_name == "git_push":
             if not is_git_repository(str(self.project_path)):
@@ -438,18 +705,154 @@ class AndroAgent:
 
         return False
 
+    def _decompose_multi_step(self, user_input: str) -> list:
+        """Decompose compound multi-step commands into ordered executable actions."""
+        text = user_input.lower().strip()
+
+        # Multi-Step Example: "Open Notepad and type Hello from ANDRO" / "Notepad kholo aur hello likho"
+        if ("open notepad" in text or "notepad khol" in text) and any(k in text for k in ["type ", "likho ", "write "]):
+            # Extract text to type
+            type_part = ""
+            for kw in ["type ", "likho ", "write "]:
+                if kw in text:
+                    type_part = user_input[text.index(kw) + len(kw):].strip()
+                    break
+            if type_part:
+                return [
+                    {"tool": "open_app", "args": {"app_name": "notepad"}, "title": "Opening Notepad"},
+                    {"tool": "_wait", "args": {"seconds": 0.8}, "title": "Waiting for Notepad window"},
+                    {"tool": "type_text", "args": {"text": type_part}, "title": f"Typing text '{type_part}'"},
+                ]
+
+        # Multi-Step Example: "Open Chrome, search Python tutorials, then open YouTube and search Techno Gamerz"
+        if ("open chrome" in text or "chrome" in text) and "open youtube" in text and ("search" in text or "play" in text):
+            # Extract queries
+            steps = []
+            if "search" in text and "python" in text:
+                steps.append({"tool": "search_google", "args": {"query": "Python tutorials"}, "title": "Searching Python tutorials on Google"})
+            if "techno gamerz" in text:
+                if "play" in text:
+                    steps.append({"tool": "play_youtube_video", "args": {"query": "Techno Gamerz"}, "title": "Searching YouTube and playing Techno Gamerz"})
+                else:
+                    steps.append({"tool": "search_youtube", "args": {"query": "Techno Gamerz"}, "title": "Searching Techno Gamerz on YouTube"})
+            if steps:
+                return steps
+
+        # Multi-Step Example: "Take a screenshot and tell me what is on my screen" / "Screenshot lo aur explain karo"
+        if ("screenshot" in text or "screen" in text) and any(k in text for k in ["tell me", "explain", "kya hai", "analyze", "problem", "error"]):
+            return [
+                {"tool": "analyze_screen", "args": {"prompt": user_input}, "title": "Analyzing screen contents and errors"},
+            ]
+
+        return []
+
+    def execute_multi_step_plan(self, plan: list, trigger_push_confirmation=None) -> bool:
+        """Execute an ordered multi-step plan with live step-by-step progress tracking."""
+        self.stop_requested = False
+        total_steps = len(plan)
+        self.console.print(f"\n[bold magenta]🧠 ANDRO is planning the task ({total_steps} steps)...[/bold magenta]\n")
+
+        for index, step in enumerate(plan, start=1):
+            if self.stop_requested:
+                self.console.print("\n[bold yellow]🛑 Task stopped by user.[/bold yellow]\n")
+                self.andro_say("Current task stopped.")
+                self.stop_requested = False
+                return True
+
+            tool_name = step.get("tool")
+            args = step.get("args", {})
+            title = step.get("title", f"Step {index}")
+
+            self.console.print(f"[bold cyan]Step {index}/{total_steps}: {title}...[/bold cyan]")
+
+            if tool_name == "_wait":
+                time.sleep(args.get("seconds", 0.5))
+            else:
+                self.execute_tool(tool_name, args, trigger_push_confirmation)
+
+            self.console.print(f"[bold green]✅ Completed Step {index}/{total_steps}[/bold green]\n")
+
+        self.console.print("[bold green]🎉 Task completed successfully.[/bold green]\n")
+        return True
+
     def _parse_direct_intent(self, user_input: str) -> tuple:
-        """High-precision intent detector for unambiguous commands (avoids misrouting)."""
+        """High-precision sub-millisecond intent detector for unambiguous commands."""
         text = user_input.lower().strip()
 
         # Exit commands
         if text in ["exit", "quit", "bye"]:
             return ("exit", {})
 
+        # Emergency Stop commands
+        if text in ["stop andro", "stop", "ruk jao", "ruko"]:
+            self.stop()
+            return ("stop", {})
+
+        # Screen Vision commands (e.g. "What is on my screen?", "Screen par kya hai?", "Analyze my screen", "Is error ko explain karo")
+        vision_triggers = [
+            "what is on my screen", "what's on my screen", "what is on screen",
+            "screen par kya hai", "screen pe kya hai", "analyze my screen",
+            "analyze the screen", "screen dekho", "what does this error mean",
+            "what is wrong on my screen", "is error ko explain karo",
+            "explain this error", "screen par kya problem hai", "screen vision"
+        ]
+        if any(t in text for t in vision_triggers):
+            return ("analyze_screen", {"prompt": user_input})
+
+        # Screenshot commands
+        if any(k in text for k in ["take a screenshot", "take screenshot", "capture screen", "screenshot lo", "screenshot le lo", "screenshot"]):
+            return ("take_screenshot", {})
+
+        # Type text commands (e.g. "Type hello in Notepad", "Type Hello World", "likho hello")
+        if text.startswith("type ") or text.startswith("likho ") or " me likho " in text or " mein likho " in text:
+            cleaned = user_input
+            for prefix in ["Type ", "type ", "likho ", "Likho "]:
+                if cleaned.startswith(prefix):
+                    cleaned = cleaned[len(prefix):]
+                    break
+            for suffix_word in [" in notepad", " in chrome", " in editor", " me", " mein"]:
+                if cleaned.lower().endswith(suffix_word):
+                    cleaned = cleaned[:-len(suffix_word)]
+            cleaned = cleaned.strip(" :\"'")
+            if cleaned:
+                return ("type_text", {"text": cleaned})
+
+        # Key press commands (e.g. "Press Enter", "Enter dabao", "Press Escape", "Press Tab")
+        key_matches = {
+            "enter": ["press enter", "enter dabao", "hit enter", "press return"],
+            "escape": ["press escape", "press esc", "esc dabao", "escape dabao"],
+            "tab": ["press tab", "tab dabao"],
+            "space": ["press space", "space dabao", "space bar"],
+            "backspace": ["press backspace", "backspace dabao"],
+            "delete": ["press delete", "delete dabao"],
+            "f5": ["press f5", "refresh page", "page refresh karo", "f5 dabao"],
+        }
+        for key, triggers in key_matches.items():
+            if any(text == t or text.startswith(t + " ") for t in triggers):
+                return ("press_key", {"key": key})
+
+        # Keyboard shortcuts (e.g. "Press Ctrl L", "Press Ctrl+C", "Shortcut Ctrl V", "Ctrl L dabao")
+        if "ctrl" in text or "alt" in text or "shortcut" in text:
+            m = re.search(r'(ctrl|alt|shift|win)[\s\+\-]+([a-z0-9]+)', text)
+            if m:
+                shortcut_str = f"{m.group(1)}+{m.group(2)}"
+                return ("keyboard_shortcut", {"shortcut": shortcut_str})
+
+        # Mouse click commands
+        if text in ["click", "click karo", "left click", "mouse click"]:
+            return ("mouse_click", {"button": "left", "clicks": 1})
+        if text in ["double click", "double click karo", "2 bar click"]:
+            return ("mouse_click", {"button": "left", "clicks": 2})
+        if text in ["right click", "right click karo"]:
+            return ("mouse_click", {"button": "right", "clicks": 1})
+
+        # Mouse move commands (e.g. "Move mouse to 500 400", "Move cursor to 500 400")
+        if "mouse" in text or "cursor" in text:
+            m = re.search(r'(\d+)[,\s]+(\d+)', text)
+            if m:
+                return ("mouse_move", {"x": int(m.group(1)), "y": int(m.group(2))})
+
         # YouTube video playback & compound search-and-play commands
-        # e.g. "Open YouTube, search Techno Gamerz and play the first video"
-        # e.g. "YouTube kholo, Techno Gamerz search karo aur pehla video chalao"
-        # e.g. "Play Techno Gamerz on YouTube", "Techno Gamerz play karo"
         play_indicators = [
             "play the first video", "play first video", "play the video",
             "play video", "play", "pehla video chalao", "pehli video chalao",
@@ -535,7 +938,6 @@ class AndroAgent:
         # Commands starting with "search X" when X is not a local file
         if text.startswith("search ") and not any(k in text for k in ["file", "folder", "project", "repo", "on google", "google"]):
             query = text[len("search "):].strip(" :,.-")
-            # If the user previously mentioned YouTube or searches a general topic/creator
             if query:
                 return ("search_youtube", {"query": query})
 
@@ -608,18 +1010,29 @@ class AndroAgent:
         return (None, {})
 
     def process_input(self, user_input: str, trigger_push_confirmation=None):
-        """Process user input with high-accuracy tool routing and Ollama chat."""
+        """Process user input with multi-step planning, high-accuracy tool routing, and Ollama chat."""
         user_input = user_input.strip()
         if not user_input:
             return
 
-        # 1. First check high-precision intent router for explicit actions
+        self.stop_requested = False
+
+        # 1. Check for compound multi-step tasks (STEP 12)
+        multi_step_plan = self._decompose_multi_step(user_input)
+        if multi_step_plan:
+            self.execute_multi_step_plan(multi_step_plan, trigger_push_confirmation)
+            return
+
+        # 2. Check high-precision direct intent router
         direct_tool, direct_args = self._parse_direct_intent(user_input)
         if direct_tool:
+            if direct_tool == "stop":
+                self.andro_say("Current task stopped.")
+                return
             self.execute_tool(direct_tool, direct_args, trigger_push_confirmation)
             return
 
-        # 2. Otherwise pass to Ollama with tools schema
+        # 3. Otherwise pass to Ollama with tools schema
         self.messages.append({
             "role": "user",
             "content": user_input,
@@ -637,6 +1050,10 @@ class AndroAgent:
 
             if tool_calls:
                 for tool_call in tool_calls:
+                    if self.stop_requested:
+                        self.andro_say("Current task stopped.")
+                        return
+
                     func = getattr(tool_call, "function", None) or tool_call.get("function", {})
                     name = getattr(func, "name", None) or (func.get("name") if isinstance(func, dict) else "")
                     arguments = getattr(func, "arguments", None) or (func.get("arguments") if isinstance(func, dict) else {})

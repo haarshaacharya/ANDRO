@@ -1,8 +1,11 @@
+import sys
+import threading
 from pathlib import Path
 from rich.console import Console
 
 from tools.voice import listen
 from tools.speaker import speak
+from tools.wake_word import WakeWordListener
 from tools.git_tools import git_push
 from agent import AndroAgent
 
@@ -18,11 +21,12 @@ agent = AndroAgent(
     model="qwen3:8b",
 )
 
+listener = WakeWordListener()
 
 # ---------------------------------
-# PUSH CONFIRMATION HELPER
+# STATE VARIABLES
 # ---------------------------------
-
+is_active = False  # Starts in SLEEPING mode (Privacy-First)
 waiting_for_push_confirmation = False
 
 
@@ -32,96 +36,166 @@ def trigger_push_confirmation():
     waiting_for_push_confirmation = True
 
 
+def print_banner():
+    console.print("\n[bold cyan]🤖 ANDRO — Personal AI Assistant[/bold cyan]")
+    console.print("[yellow]Modes & Commands:[/yellow]")
+    console.print(" • [bold green]Voice Mode:[/bold green] Say [bold white]'Hey ANDRO'[/bold white] to activate, [bold white]'Bye ANDRO'[/bold white] to sleep.")
+    console.print(" • [bold green]Text Commands:[/bold green] Type commands directly or type [bold white]'voice'[/bold white] / [bold white]'wake'[/bold white].")
+    console.print(" • [bold green]Emergency Stop:[/bold green] Say/type [bold red]'STOP ANDRO'[/bold red] to stop active tasks.")
+    console.print(" • [bold green]Exit:[/bold green] Type [bold red]'exit'[/bold red] to close.\n")
+    console.print("[cyan]Try natural commands like:\n"
+                  " • 'What is on my screen?' or 'Explain this error'\n"
+                  " • 'Open Notepad and type Hello from ANDRO'\n"
+                  " • 'Open YouTube, search Techno Gamerz and play the first video'\n"
+                  " • 'search Techno Gamerz' or 'Search Python tutorials on Google'\n"
+                  " • 'Open Storagge.in' or 'Open Google'\n"
+                  " • 'Find my ANDRO project' or 'Mera project dhundo'\n"
+                  " • 'Check my Git status' or 'Push my changes to GitHub'[/cyan]\n")
+
+
+def run_wake_word_loop():
+    """Continuous background / interactive Wake-Word voice loop."""
+    global is_active, waiting_for_push_confirmation
+    console.print("\n[bold red]🔴 ANDRO SLEEPING — Waiting for 'Hey ANDRO'[/bold red]\n")
+
+    while True:
+        if not is_active:
+            # Sleeping state: low-resource, privacy-first audio check
+            detected = listener.listen_for_wake_word(timeout=3.0)
+            if detected:
+                is_active = True
+                console.print("\n[bold green]🟢 ANDRO ACTIVE — Listening[/bold green]")
+                console.print("[cyan]Say your commands or say 'Bye ANDRO' to sleep.[/cyan]\n")
+                speak("Yes, I'm listening.")
+        else:
+            # Active state: listen for commands continuously
+            voice_result = listener.listen_command(timeout=8.0, phrase_time_limit=12.0)
+
+            if not voice_result.get("success"):
+                if voice_result.get("timeout"):
+                    # Silent pause - keep waiting in ACTIVE state
+                    continue
+                continue
+
+            user_text = voice_result["text"].strip()
+            console.print(f"\n[bold magenta]🎤 YOU SAID > {user_text}[/bold magenta]\n")
+            cmd_lower = user_text.lower()
+
+            # Check for Sleep / Deactivation command
+            if listener.is_sleep_command(cmd_lower):
+                is_active = False
+                console.print("\n[bold red]🔴 ANDRO SLEEPING — Waiting for 'Hey ANDRO'[/bold red]\n")
+                speak("Goodbye. Going to sleep.")
+                continue
+
+            # Check for Emergency STOP command
+            if listener.is_stop_command(cmd_lower):
+                agent.stop()
+                console.print("\n[bold yellow]🛑 Task stopped by user.[/bold yellow]\n")
+                speak("Current task stopped.")
+                continue
+
+            # Push Confirmation handling
+            if waiting_for_push_confirmation:
+                if any(w in cmd_lower for w in ["yes", "haan", "ha", "push"]):
+                    console.print("\n[yellow]🚀 ANDRO is pushing changes to GitHub...[/yellow]")
+                    result = git_push(str(PROJECT_PATH))
+                    agent.print_git_result("Push", result)
+                    waiting_for_push_confirmation = False
+                elif any(w in cmd_lower for w in ["no", "cancel", "nahi"]):
+                    console.print("\n[yellow]❌ Push cancelled.[/yellow]\n")
+                    speak("Push cancelled.")
+                    waiting_for_push_confirmation = False
+                else:
+                    speak("Please say yes to push or no to cancel.")
+                continue
+
+            # Execute active command — ANDRO REMAINS ACTIVE!
+            agent.process_input(user_text, trigger_push_confirmation=trigger_push_confirmation)
+
+
 # ---------------------------------
-# START ANDRO
+# MAIN INTERACTIVE ENTRY POINT
 # ---------------------------------
+if __name__ == "__main__":
+    print_banner()
 
-console.print("[bold cyan]🤖 ANDRO is online![/bold cyan]")
-console.print("[yellow]Type 'exit' to close ANDRO.[/yellow]")
-console.print("[yellow]Type 'voice' to speak to ANDRO.[/yellow]")
-console.print(
-    "[cyan]Try natural commands like:\n"
-    " • 'Open YouTube, search Techno Gamerz and play the first video'\n"
-    " • 'YouTube kholo, Techno Gamerz search karo aur pehla video chalao'\n"
-    " • 'Open Chrome and search Python tutorials on Google'\n"
-    " • 'Open Storagge.in' or 'Open Google'\n"
-    " • 'Find my ANDRO project' or 'Mera project dhundo'\n"
-    " • 'Open Chrome' or 'Open Calculator'\n"
-    " • 'Check my Git status' or 'Stage all my changes'\n"
-    " • 'Commit changes with message Added new feature'\n"
-    " • 'Push my changes to GitHub'[/cyan]\n"
-)
+    console.print("[yellow]Choose startup mode:[/yellow]")
+    console.print(" [bold cyan]1[/bold cyan] — 🎙️ Wake Word Mode (Starts in 🔴 SLEEPING, activates on 'Hey ANDRO')")
+    console.print(" [bold cyan]2[/bold cyan] — ⌨️ Text Terminal Mode (Direct typed commands + voice command trigger)")
 
+    try:
+        mode_choice = console.input("\n[bold green]Enter mode (1 or 2, default is 2) > [/bold green]").strip()
+    except (KeyboardInterrupt, EOFError):
+        sys.exit(0)
 
-# ---------------------------------
-# MAIN LOOP
-# ---------------------------------
+    if mode_choice == "1" or mode_choice.lower() in ["wake", "voice", "v"]:
+        run_wake_word_loop()
+    else:
+        # Standard Interactive Text Terminal Mode
+        console.print("\n[bold green]⌨️ Text Terminal Mode Active.[/bold green]")
+        console.print("[cyan]Type your commands below. Type 'wake' for wake-word mode, 'voice' to speak once, or 'exit' to close.[/cyan]\n")
 
-while True:
-    user_input = console.input("[bold green]YOU > [/bold green]")
-    command_lower = user_input.lower().strip()
+        while True:
+            try:
+                user_input = console.input("[bold green]YOU > [/bold green]").strip()
+            except (KeyboardInterrupt, EOFError):
+                break
 
-    if not command_lower:
-        continue
+            if not user_input:
+                continue
 
-    # ---------------------------------
-    # VOICE INPUT
-    # ---------------------------------
-    if command_lower == "voice":
-        voice_result = listen()
-
-        if voice_result["success"]:
-            user_input = voice_result["text"]
-            console.print(
-                f"\n[bold magenta]🎤 YOU SAID > {user_input}[/bold magenta]\n"
-            )
             command_lower = user_input.lower().strip()
-        else:
-            console.print(
-                f"\n[bold red]❌ ANDRO: {voice_result['message']}[/bold red]\n"
-            )
-            speak(voice_result["message"])
-            continue
 
-    # ---------------------------------
-    # EXIT
-    # ---------------------------------
-    if command_lower in ["exit", "quit", "bye"]:
-        goodbye_message = "Goodbye! See you soon."
-        console.print("\n[bold red]ANDRO: Goodbye! 👋[/bold red]")
-        speak(goodbye_message)
-        break
+            # Voice command trigger
+            if command_lower == "voice":
+                voice_result = listen()
+                if voice_result["success"]:
+                    user_input = voice_result["text"]
+                    console.print(f"\n[bold magenta]🎤 YOU SAID > {user_input}[/bold magenta]\n")
+                    command_lower = user_input.lower().strip()
+                else:
+                    console.print(f"\n[bold red]❌ ANDRO: {voice_result['message']}[/bold red]\n")
+                    speak(voice_result["message"])
+                    continue
 
-    # ---------------------------------
-    # PUSH CONFIRMATION
-    # ---------------------------------
-    if waiting_for_push_confirmation:
-        if command_lower in ["yes", "y", "haan", "ha"]:
-            console.print(
-                "\n[yellow]🚀 ANDRO is pushing changes to GitHub...[/yellow]"
-            )
-            result = git_push(str(PROJECT_PATH))
-            agent.print_git_result("Push", result)
-            waiting_for_push_confirmation = False
-            continue
+            # Switch to continuous wake word mode
+            if command_lower in ["wake", "wakeword", "wake word"]:
+                run_wake_word_loop()
+                continue
 
-        elif command_lower in ["no", "n", "cancel", "nahi"]:
-            message = "Push cancelled. Nothing was pushed."
-            console.print(f"\n[yellow]❌ {message}[/yellow]\n")
-            speak(message)
-            waiting_for_push_confirmation = False
-            continue
+            # Exit
+            if command_lower in ["exit", "quit", "bye"]:
+                console.print("\n[bold red]ANDRO: Goodbye! 👋[/bold red]\n")
+                speak("Goodbye! See you soon.")
+                break
 
-        else:
-            message = "Please type yes to push or no to cancel."
-            console.print(f"\n[yellow]{message}[/yellow]\n")
-            speak(message)
-            continue
+            # Emergency Stop
+            if command_lower in ["stop andro", "stop", "ruk jao", "ruko"]:
+                agent.stop()
+                console.print("\n[bold yellow]🛑 Task stopped by user.[/bold yellow]\n")
+                speak("Current task stopped.")
+                continue
 
-    # ---------------------------------
-    # NATURAL LANGUAGE AI AGENT ROUTING
-    # ---------------------------------
-    agent.process_input(
-        user_input,
-        trigger_push_confirmation=trigger_push_confirmation,
-    )
+            # Push Confirmation
+            if waiting_for_push_confirmation:
+                if command_lower in ["yes", "y", "haan", "ha"]:
+                    console.print("\n[yellow]🚀 ANDRO is pushing changes to GitHub...[/yellow]")
+                    result = git_push(str(PROJECT_PATH))
+                    agent.print_git_result("Push", result)
+                    waiting_for_push_confirmation = False
+                    continue
+                elif command_lower in ["no", "n", "cancel", "nahi"]:
+                    message = "Push cancelled. Nothing was pushed."
+                    console.print(f"\n[yellow]❌ {message}[/yellow]\n")
+                    speak(message)
+                    waiting_for_push_confirmation = False
+                    continue
+                else:
+                    message = "Please type yes to push or no to cancel."
+                    console.print(f"\n[yellow]{message}[/yellow]\n")
+                    speak(message)
+                    continue
+
+            # Process command with Agent
+            agent.process_input(user_input, trigger_push_confirmation=trigger_push_confirmation)
