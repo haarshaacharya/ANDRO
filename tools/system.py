@@ -14,6 +14,29 @@ APPS = {
     "vs code": ["code"],
 }
 
+APP_ALIASES = {
+    "google chrome": "chrome",
+    "google-chrome": "chrome",
+    "browser": "chrome",
+    "calc": "calculator",
+    "calculator app": "calculator",
+    "notes": "notepad",
+    "editor": "notepad",
+    "text editor": "notepad",
+    "file explorer": "explorer",
+    "files": "explorer",
+    "my computer": "explorer",
+    "visual studio code": "vscode",
+    "vs code": "vscode",
+    "code": "vscode",
+    "mspaint": "paint",
+    "ms paint": "paint",
+}
+
+
+
+CHROME_PROFILE = "Profile 1"
+
 
 def find_chrome():
     """Try common Chrome installation locations."""
@@ -55,19 +78,20 @@ def open_app(app_name: str):
     """Open an allowed application."""
 
     app_name = app_name.lower().strip()
+    app_name = APP_ALIASES.get(app_name, app_name)
 
-    # Special handling for Chrome
+    # Special handling for Chrome (uses personal Profile 1)
     if app_name == "chrome":
 
         chrome_path = find_chrome()
 
         if chrome_path:
             try:
-                subprocess.Popen([chrome_path])
+                subprocess.Popen([chrome_path, f"--profile-directory={CHROME_PROFILE}"])
 
                 return {
                     "success": True,
-                    "message": "Opened Chrome successfully."
+                    "message": f"Opened Chrome (using {CHROME_PROFILE}) successfully."
                 }
 
             except Exception as error:
