@@ -152,38 +152,6 @@ ollama pull qwen3:8b
 # Vision model for screen analysis (optional but recommended)
 ollama pull llava
 ```
-
----
-
-## 🚀 HOW TO START ANDRO
-
-### Option 1: One-Click Windows Launcher (Standard)
-> **Double-click `START_ANDRO.bat`** in the project root folder.
-- Automatically sets the project directory.
-- Activates the existing `.venv` virtual environment.
-- Launches the modern ANDRO Desktop GUI.
-- Validates the environment and shows clear helpful error messages if Python or `.venv` is missing.
-
-### Option 2: Hidden Terminal Desktop Startup (Recommended)
-> **Double-click `START_ANDRO.vbs`** in the project root folder.
-- Launches `START_ANDRO.bat` silently in the background without displaying any Command Prompt or PowerShell terminal window.
-- The ANDRO GUI opens directly like a native Windows desktop application.
-
-### Option 3: Diagnostic & Debug Launcher (Console Output + Pause)
-> **Double-click `DEBUG_ANDRO.bat`** in the project root folder.
-- Runs ANDRO with a visible console window.
-- Prints the Python executable path, Python version, and working directory.
-- Pauses when the application terminates so you can inspect any debug or error messages.
-
-### Option 4: Manual Terminal Launch
-```powershell
-# Run the Desktop GUI
-python gui.py
-
-# Or run the Interactive Terminal & Wake-Word mode
-python main.py
-```
-
 ---
 
 ## 🗣️ Voice & Text Command Lifecycle
@@ -227,39 +195,6 @@ python main.py
 | **Git Push** | *"Push my changes to GitHub"* | Requests explicit confirmation (`YES`/`NO`) before pushing. |
 
 ---
-
-## 📁 Project Structure
-
-```
-ANDRO/
-│
-├── START_ANDRO.vbs           # Silent Windows desktop launcher (hidden terminal)
-├── START_ANDRO.bat           # One-click Windows batch launcher (direct .venv python)
-├── DEBUG_ANDRO.bat           # Diagnostic & debug launcher (visible console + pause)
-├── main.py                   # Terminal interactive & wake-word entry point
-├── agent.py                  # Multi-step AI agent & intent routing engine
-├── gui.py                    # CustomTkinter modern desktop GUI dashboard
-├── requirements.txt          # Project dependencies
-├── README.md                 # Complete project documentation
-├── .gitignore                # Git ignore rules for clean repository
-│
-├── tools/                    # Modular automation tool suite
-│   ├── voice.py              # Low-latency microphone speech recognition
-│   ├── speaker.py            # Non-blocking Text-to-Speech synthesis
-│   ├── wake_word.py          # Strict wake-word, sleep, stop & exit command matcher
-│   ├── state_manager.py      # Audio state tracker & echo prevention
-│   ├── logger.py             # Local daily activity logging
-│   ├── browser_control.py    # Chrome Profile 1 & YouTube stream resolver
-│   ├── browser.py            # Browser navigation fallbacks
-│   ├── desktop.py            # Safe PyAutoGUI keyboard/mouse automation
-│   ├── vision.py             # Multi-tier screen vision & Ollama analyzer
-│   ├── system.py             # Windows application launcher & Chrome finder
-│   ├── files.py              # Local workspace and disk file search
-│   └── git_tools.py          # Git status, staging, commit & push tools
-│
-└── logs/                     # Local daily log storage (.gitignore protected)
-    └── .gitkeep
-```
 
 ---
 
