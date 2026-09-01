@@ -28,8 +28,9 @@ ANDRO supports **English**, **Hindi**, and **Hinglish** natural language phrasin
 - **Strict Wake Phrase:** Activates strictly on *"Hey ANDRO"* or *"Hello ANDRO"*.
 - **False-Positive Prevention:** Rejects unrelated phrases such as *"Android development"*, *"Android phone"*, or *"Android studio"*.
 - **Continuous Active State:** Once activated, ANDRO transitions to `🟢 ACTIVE` mode and remains active across multiple commands without timing out or sleeping after a single response.
-- **Sleep Command:** Returns to `🔴 SLEEPING` mode only when the user explicitly says *"Bye ANDRO"* or *"Goodbye ANDRO"*.
+- **Sleep Command:** Returns to `🔴 SLEEPING` mode only when the user explicitly says *"Bye ANDRO"* or *"Goodbye ANDRO"* (does **not** close the application).
 - **Emergency STOP:** Saying or typing *"STOP ANDRO"* immediately aborts active tasks while keeping ANDRO active.
+- **Complete Exit / Shutdown:** Saying or typing *"Exit ANDRO"*, *"Close ANDRO"*, or *"Shutdown ANDRO"* responds with *"Goodbye. Shutting down ANDRO."*, safely stops tasks, halts background listening loops, and cleanly terminates the application.
 - **Speech Echo Prevention:** Automatically pauses microphone listening while ANDRO is speaking, with a post-speech cooldown buffer to prevent the assistant from hearing and executing its own voice.
 
 ---
@@ -132,6 +133,153 @@ ANDRO supports **English**, **Hindi**, and **Hinglish** natural language phrasin
 | **CustomTkinter** | Modern dark-themed desktop GUI |
 | **Rich** | Formatted colored terminal logging |
 | **Git** | Version control integration |
+
+---
+
+<<<<<<< HEAD
+=======
+## 📦 Installation
+
+### 1. Clone the Repository
+```powershell
+git clone https://github.com/haarshaacharya/ANDRO.git
+cd ANDRO
+```
+
+### 2. Set Up Virtual Environment
+```powershell
+python -m venv .venv
+.venv\Scripts\Activate.ps1
+```
+
+### 3. Install Dependencies
+```powershell
+pip install -r requirements.txt
+```
+
+### 4. Install Playwright Browsers (Optional for browser automation)
+```powershell
+playwright install chromium
+```
+
+### 5. Install and Start Ollama
+1. Download Ollama from [https://ollama.com](https://ollama.com).
+2. Pull the required models:
+```powershell
+# Core conversational & reasoning model
+ollama pull qwen3:8b
+
+# Vision model for screen analysis (optional but recommended)
+ollama pull llava
+```
+
+---
+
+## 🚀 HOW TO START ANDRO
+
+### Option 1: One-Click Windows Launcher (Standard)
+> **Double-click `START_ANDRO.bat`** in the project root folder.
+- Automatically sets the project directory.
+- Activates the existing `.venv` virtual environment.
+- Launches the modern ANDRO Desktop GUI.
+- Validates the environment and shows clear helpful error messages if Python or `.venv` is missing.
+
+### Option 2: Hidden Terminal Desktop Startup (Recommended)
+> **Double-click `START_ANDRO.vbs`** in the project root folder.
+- Launches `START_ANDRO.bat` silently in the background without displaying any Command Prompt or PowerShell terminal window.
+- The ANDRO GUI opens directly like a native Windows desktop application.
+
+### Option 3: Diagnostic & Debug Launcher (Console Output + Pause)
+> **Double-click `DEBUG_ANDRO.bat`** in the project root folder.
+- Runs ANDRO with a visible console window.
+- Prints the Python executable path, Python version, and working directory.
+- Pauses when the application terminates so you can inspect any debug or error messages.
+
+### Option 4: Manual Terminal Launch
+```powershell
+# Run the Desktop GUI
+python gui.py
+
+# Or run the Interactive Terminal & Wake-Word mode
+python main.py
+```
+
+---
+
+## 🗣️ Voice & Text Command Lifecycle
+
+```
+ Double-click START_ANDRO.vbs / START_ANDRO.bat
+                      ↓
+               ANDRO GUI opens
+                      ↓
+               🔴 ANDRO is SLEEPING
+                      ↓
+            User says "Hey ANDRO"
+                      ↓
+               🟢 ANDRO becomes ACTIVE
+                      ↓
+             User gives commands...
+                      ↓
+  "Bye ANDRO"  ──────────────→  🔴 ANDRO sleeps (ready to wake up again)
+  "STOP ANDRO" ──────────────→  🛑 Abort active task only (remains active)
+  "Exit ANDRO" ──────────────→  👋 Cleanly shut down & close application
+```
+
+---
+
+## 📋 Command Reference Table
+
+| Intent | Voice / Text Command | Behavior |
+| :--- | :--- | :--- |
+| **Activate Assistant** | *"Hey ANDRO"* / *"Hello ANDRO"* | Wakes ANDRO up from `🔴 SLEEPING` to `🟢 ACTIVE`. |
+| **Go to Sleep** | *"Bye ANDRO"* / *"Goodbye ANDRO"* | Puts ANDRO to sleep (`🔴 SLEEPING`). **Does NOT close the app.** |
+| **Emergency Stop** | *"STOP ANDRO"* / *"Stop"* / *"Ruko"* | Aborts current multi-step task safely; ANDRO remains `🟢 ACTIVE`. |
+| **Complete Exit** | *"Exit ANDRO"* / *"Close ANDRO"* / *"Shutdown ANDRO"* | Speaks farewell, halts loops, closes GUI, and **completely closes application**. |
+| **Screen Vision** | *"What is on my screen?"* / *"Explain this error"* | Captures screen on demand and visually analyzes active error or window. |
+| **YouTube Play** | *"Open YouTube, search Techno Gamerz and play the first video"* | Resolves top video stream and begins playback immediately. |
+| **YouTube Search** | *"Search Techno Gamerz on YouTube"* | Opens YouTube search results page in Chrome Profile 1. |
+| **Google Search** | *"Search latest AI news on Google"* | Opens search results directly on Google in browser. |
+| **Desktop Automation** | *"Open Notepad and type Hello from ANDRO"* | Multi-step task: launches Notepad, focuses, and injects text. |
+| **Screenshots** | *"Take a screenshot"* | Captures screen to `Pictures/ANDRO_Screenshots`. |
+| **Git Status** | *"Check my Git status"* | Inspects modified files and branch status. |
+| **Git Commit** | *"Commit changes with message Added new feature"* | Stages all changes and creates commit. |
+| **Git Push** | *"Push my changes to GitHub"* | Requests explicit confirmation (`YES`/`NO`) before pushing. |
+
+---
+
+## 📁 Project Structure
+
+```
+ANDRO/
+│
+├── START_ANDRO.vbs           # Silent Windows desktop launcher (hidden terminal)
+├── START_ANDRO.bat           # One-click Windows batch launcher (direct .venv python)
+├── DEBUG_ANDRO.bat           # Diagnostic & debug launcher (visible console + pause)
+├── main.py                   # Terminal interactive & wake-word entry point
+├── agent.py                  # Multi-step AI agent & intent routing engine
+├── gui.py                    # CustomTkinter modern desktop GUI dashboard
+├── requirements.txt          # Project dependencies
+├── README.md                 # Complete project documentation
+├── .gitignore                # Git ignore rules for clean repository
+│
+├── tools/                    # Modular automation tool suite
+│   ├── voice.py              # Low-latency microphone speech recognition
+│   ├── speaker.py            # Non-blocking Text-to-Speech synthesis
+│   ├── wake_word.py          # Strict wake-word, sleep, stop & exit command matcher
+│   ├── state_manager.py      # Audio state tracker & echo prevention
+│   ├── logger.py             # Local daily activity logging
+│   ├── browser_control.py    # Chrome Profile 1 & YouTube stream resolver
+│   ├── browser.py            # Browser navigation fallbacks
+│   ├── desktop.py            # Safe PyAutoGUI keyboard/mouse automation
+│   ├── vision.py             # Multi-tier screen vision & Ollama analyzer
+│   ├── system.py             # Windows application launcher & Chrome finder
+│   ├── files.py              # Local workspace and disk file search
+│   └── git_tools.py          # Git status, staging, commit & push tools
+│
+└── logs/                     # Local daily log storage (.gitignore protected)
+    └── .gitkeep
+```
 
 ---
 

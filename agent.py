@@ -9,6 +9,7 @@ from tools.files import find_files
 from tools.system import open_app
 from tools.speaker import speak
 from tools.logger import log_activity
+from tools.wake_word import WakeWordListener
 from tools.state_manager import state_manager, AssistantState
 from tools.browser_control import (
     open_website,
@@ -885,8 +886,8 @@ class AndroAgent:
         """High-precision sub-millisecond intent detector for unambiguous commands."""
         text = user_input.lower().strip()
 
-        # Exit commands
-        if text in ["exit", "quit", "bye"]:
+        # Exit commands (e.g. 'exit andro', 'close andro', 'shutdown andro', 'exit')
+        if WakeWordListener.is_exit_command(text):
             return ("exit", {})
 
         # Emergency Stop commands
@@ -1135,6 +1136,9 @@ class AndroAgent:
         if direct_tool:
             if direct_tool == "stop":
                 self.andro_say("Current task stopped.")
+                return
+            if direct_tool == "exit":
+                self.andro_say("Goodbye. Shutting down ANDRO.")
                 return
             self.execute_tool(direct_tool, direct_args, trigger_push_confirmation)
             return

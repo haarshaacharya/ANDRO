@@ -56,6 +56,23 @@ STOP_PATTERNS = [
     r"^abort$",
 ]
 
+EXIT_PATTERNS = [
+    r"\bexit\s+andro\b",
+    r"\bclose\s+andro\b",
+    r"\bshutdown\s+andro\b",
+    r"\bandro\s+exit\b",
+    r"\bandro\s+close\b",
+    r"\bandro\s+shutdown\b",
+    r"^exit$",
+    r"^close$",
+    r"^shutdown$",
+    r"^quit$",
+    r"\bband\s+karo\s+andro\b",
+    r"\bandro\s+band\s+karo\b",
+    r"\bband\s+kar\s+do\s+andro\b",
+    r"\bandro\s+band\s+kar\s+do\b",
+]
+
 
 def normalize_speech(text: str) -> str:
     """Clean speech text: lowercase, remove punctuation, collapse whitespace."""
@@ -179,3 +196,13 @@ class WakeWordListener:
             if re.search(pattern, norm):
                 return True
         return False
+
+    @staticmethod
+    def is_exit_command(text: str) -> bool:
+        """Check if a text string is an EXIT / SHUTDOWN command."""
+        norm = normalize_speech(text)
+        for pattern in EXIT_PATTERNS:
+            if re.search(pattern, norm):
+                return True
+        return False
+

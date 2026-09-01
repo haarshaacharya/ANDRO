@@ -43,7 +43,7 @@ def print_banner():
     console.print(" • [bold green]Voice Mode:[/bold green] Say [bold white]'Hey ANDRO'[/bold white] to activate, [bold white]'Bye ANDRO'[/bold white] to sleep.")
     console.print(" • [bold green]Text Commands:[/bold green] Type commands directly or type [bold white]'voice'[/bold white] / [bold white]'wake'[/bold white].")
     console.print(" • [bold green]Emergency Stop:[/bold green] Say/type [bold red]'STOP ANDRO'[/bold red] to stop active tasks.")
-    console.print(" • [bold green]Exit:[/bold green] Type [bold red]'exit'[/bold red] to close.\n")
+    console.print(" • [bold green]Complete Exit:[/bold green] Say/type [bold red]'Exit ANDRO'[/bold red] or [bold red]'exit'[/bold red] to close completely.\n")
     console.print("[cyan]Try natural commands like:\n"
                   " • 'What is on my screen?' or 'Explain this error'\n"
                   " • 'Open Notepad and type Hello from ANDRO'\n"
@@ -86,14 +86,24 @@ def run_wake_word_loop():
             user_text = voice_result["text"].strip()
             console.print(f"\n[bold magenta]🎤 YOU SAID > {user_text}[/bold magenta]\n")
 
-            # Check for Sleep / Deactivation command
+            # 1. Check for Complete Exit command
+            if listener.is_exit_command(user_text):
+                state_manager.set_state(AssistantState.SLEEPING, "Shutting down ANDRO")
+                console.print("\n[bold red]ANDRO: Goodbye. Shutting down ANDRO. 👋[/bold red]\n")
+                log_activity("SHUTDOWN", "Shutdown command received in wake word loop.")
+                agent.stop()
+                speak("Goodbye. Shutting down ANDRO.")
+                state_manager.wait_after_speech(1.5)
+                sys.exit(0)
+
+            # 2. Check for Sleep / Deactivation command (Bye ANDRO must ONLY sleep)
             if listener.is_sleep_command(user_text):
                 state_manager.set_state(AssistantState.SLEEPING, "Waiting for 'Hey ANDRO'")
                 console.print("\n[bold red]🔴 ANDRO SLEEPING — Waiting for 'Hey ANDRO'[/bold red]\n")
                 speak("Goodbye. Going to sleep.")
                 continue
 
-            # Check for Emergency STOP command
+            # 3. Check for Emergency STOP command
             if listener.is_stop_command(user_text):
                 agent.stop()
                 console.print("\n[bold yellow]🛑 Task stopped by user.[/bold yellow]\n")
@@ -176,10 +186,13 @@ if __name__ == "__main__":
                     run_wake_word_loop()
                     continue
 
-                # Exit
-                if command_lower in ["exit", "quit", "bye"]:
-                    console.print("\n[bold red]ANDRO: Goodbye! 👋[/bold red]\n")
-                    speak("Goodbye! See you soon.")
+                # Complete Exit
+                if listener.is_exit_command(command_lower):
+                    console.print("\n[bold red]ANDRO: Goodbye. Shutting down ANDRO. 👋[/bold red]\n")
+                    log_activity("SHUTDOWN", "Shutdown command received in text terminal.")
+                    agent.stop()
+                    speak("Goodbye. Shutting down ANDRO.")
+                    state_manager.wait_after_speech(1.5)
                     break
 
                 # Emergency Stop

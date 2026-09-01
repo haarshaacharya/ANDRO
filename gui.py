@@ -39,8 +39,9 @@ class AndroGUI:
             on_message=self.add_assistant_message,
         )
         self.listener = WakeWordListener()
-        self.is_wake_word_running = False
+        self.is_wake_word_running = True
         self.waiting_for_push = False
+        self._is_shutting_down = False
 
         # Register GUI as a state listener
         state_manager.add_listener(self.on_system_state_change)
@@ -49,6 +50,9 @@ class AndroGUI:
             self._init_customtkinter()
         else:
             self._init_standard_tkinter()
+
+        # Start wake-word loop in background (starts in SLEEPING mode waiting for 'Hey ANDRO')
+        threading.Thread(target=self._wake_word_worker, daemon=True).start()
 
     # -------------------------------------------------------------
     # CUSTOMTKINTER MODERN INTERFACE
@@ -62,6 +66,7 @@ class AndroGUI:
         self.root.geometry("1100x740")
         self.root.minsize(920, 620)
         self.root.configure(fg_color="#090d16")
+        self.root.protocol("WM_DELETE_WINDOW", self.handle_window_close)
 
         # Main Layout: Left Sidebar + Right Dashboard
         self.sidebar = ctk.CTkFrame(self.root, width=270, fg_color="#0f172a", corner_radius=0)
@@ -139,10 +144,10 @@ class AndroGUI:
 
         self.wake_btn = ctk.CTkButton(
             self.sidebar,
-            text="🎙️ Wake Word: OFF",
+            text="🎙️ Wake Word: ON",
             font=ctk.CTkFont(family="Segoe UI", size=13, weight="bold"),
-            fg_color="#334155",
-            hover_color="#475569",
+            fg_color="#10b981",
+            hover_color="#059669",
             text_color="#f8fafc",
             height=40,
             corner_radius=10,
@@ -291,7 +296,8 @@ class AndroGUI:
         )
         self.send_btn.pack(side="right", padx=(4, 12), pady=10)
 
-        # Add Welcome Message Card
+        # Render window immediately for zero-latency startup
+        self.root.update_idletasks()
         self.add_assistant_message(
             "👋 **Hello! I am ANDRO v1.1, your Personal AI Assistant.**\n\n"
             "Here is what I can do for you:\n"
@@ -314,6 +320,7 @@ class AndroGUI:
         self.root.title("ANDRO — Personal AI Assistant v1.1")
         self.root.geometry("1000x700")
         self.root.configure(bg="#090d16")
+        self.root.protocol("WM_DELETE_WINDOW", self.handle_window_close)
 
         self.chat_container = scrolledtext.ScrolledText(
             self.root,
@@ -458,6 +465,23 @@ class AndroGUI:
     def _worker_execute_command(self, text: str):
         """Worker thread for Agent processing."""
         try:
+            # 1. Check for complete exit command
+            if self.listener.is_exit_command(text):
+                self.handle_shutdown()
+                return
+
+            # 2. Check for sleep command (Bye ANDRO must ONLY sleep)
+            if self.listener.is_sleep_command(text):
+                state_manager.set_state(AssistantState.SLEEPING, "🔴 ANDRO SLEEPING — Waiting for 'Hey ANDRO'")
+                self.add_assistant_message("🔴 **Goodbye. Going to sleep.** Say *'Hey ANDRO'* whenever you need me.")
+                speak("Goodbye. Going to sleep.")
+                return
+
+            # 3. Check for stop command
+            if self.listener.is_stop_command(text):
+                self.handle_stop_click()
+                return
+
             # Handle Git push confirmation
             if self.waiting_for_push:
                 if any(w in text.lower() for w in ["yes", "y", "haan", "ha"]):
@@ -483,7 +507,7 @@ class AndroGUI:
             self.add_assistant_message(f"❌ Error: {err}", is_error=True)
             log_activity("GUI_ERROR", str(err))
         finally:
-            if state_manager.get_state() == AssistantState.PROCESSING:
+            if not self._is_shutting_down and state_manager.get_state() == AssistantState.PROCESSING:
                 state_manager.set_state(AssistantState.ACTIVE, "Ready for your next command.")
 
     def handle_stop_click(self):
@@ -492,6 +516,59 @@ class AndroGUI:
         self.add_assistant_message("🛑 **EMERGENCY STOP TRIGGERED:** Current task was stopped safely.", is_error=True)
         speak("Current task stopped.")
         state_manager.set_state(AssistantState.ACTIVE, "Task stopped safely. ANDRO is ACTIVE.")
+
+    def handle_shutdown(self):
+        """Cleanly shut down ANDRO: notify user, speak farewell, stop background loops, and close GUI."""
+        if self._is_shutting_down:
+            return
+        self._is_shutting_down = True
+
+        # Stop wake-word loop & active task
+        self.is_wake_word_running = False
+        self.agent.stop()
+        log_activity("SHUTDOWN", "Shutdown command received. Terminating ANDRO application.")
+
+        shutdown_msg = "Goodbye. Shutting down ANDRO."
+        self.add_assistant_message(f"👋 **{shutdown_msg}**")
+        state_manager.set_state(AssistantState.SLEEPING, shutdown_msg)
+
+        def _shutdown_routine():
+            try:
+                speak(shutdown_msg)
+                # Wait for speech to complete or maximum 2.5 seconds
+                timeout = time.time() + 2.5
+                while state_manager.is_speaking() and time.time() < timeout:
+                    time.sleep(0.05)
+                time.sleep(0.3)
+            except Exception:
+                pass
+            finally:
+                try:
+                    self.root.after(0, self._destroy_and_exit)
+                except Exception:
+                    os._exit(0)
+
+        threading.Thread(target=_shutdown_routine, daemon=True).start()
+
+    def _destroy_and_exit(self):
+        """Safely destroy GUI window and terminate process."""
+        try:
+            self.root.quit()
+            self.root.destroy()
+        except Exception:
+            pass
+        finally:
+            os._exit(0)
+
+    def handle_window_close(self):
+        """Window close button (X) event handler."""
+        if self._is_shutting_down:
+            return
+        self._is_shutting_down = True
+        self.is_wake_word_running = False
+        self.agent.stop()
+        log_activity("SHUTDOWN", "GUI window closed by user.")
+        self._destroy_and_exit()
 
     def handle_voice_once(self):
         """One-tap voice input button."""
@@ -546,14 +623,19 @@ class AndroGUI:
                     user_text = voice_result["text"].strip()
                     self.add_user_message(user_text)
 
-                    # Check for sleep command
+                    # 1. Check for complete exit command
+                    if self.listener.is_exit_command(user_text):
+                        self.handle_shutdown()
+                        return
+
+                    # 2. Check for sleep command (Bye ANDRO must ONLY sleep)
                     if self.listener.is_sleep_command(user_text):
                         state_manager.set_state(AssistantState.SLEEPING, "🔴 ANDRO SLEEPING — Waiting for 'Hey ANDRO'")
                         self.add_assistant_message("🔴 **Goodbye. Going to sleep.** Say *'Hey ANDRO'* whenever you need me.")
                         speak("Goodbye. Going to sleep.")
                         continue
 
-                    # Check for stop command
+                    # 3. Check for stop command
                     if self.listener.is_stop_command(user_text):
                         self.handle_stop_click()
                         continue
