@@ -114,26 +114,6 @@ ANDRO supports **English**, **Hindi**, and **Hinglish** natural language phrasin
 - **Fast Desktop Actions:** PyAutoGUI pause delay tuned to `0.05s` with `0.01s` clipboard typing.
 - **Crisp Speech Rate:** PyTTSx3 speech synthesis rate tuned to `205 WPM`.
 - **Sub-Second Intent Routing:** Pre-router executes standard tools in under `1ms`.
-
----
-
-## 🛠️ Technologies Used
-
-| Technology / Library | Purpose |
-| :--- | :--- |
-| **Python 3.10+** | Core programming language |
-| **Ollama** | Local LLM runtime (`qwen3:8b`, `llava`) |
-| **SpeechRecognition** | Audio transcription & voice command input |
-| **PyAudio** | Cross-platform audio I/O streaming |
-| **pyttsx3** | Local offline Text-to-Speech synthesis |
-| **PyAutoGUI** | GUI automation, keyboard keys, shortcuts, mouse |
-| **Pyperclip** | Fast Unicode clipboard text injection |
-| **Pillow (PIL)** | Safe native image grabbing for screen vision |
-| **Playwright** | Browser automation engine |
-| **CustomTkinter** | Modern dark-themed desktop GUI |
-| **Rich** | Formatted colored terminal logging |
-| **Git** | Version control integration |
-
 ---
 
 <<<<<<< HEAD
