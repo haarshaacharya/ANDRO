@@ -20,6 +20,7 @@ ANDRO supports **English**, **Hindi**, and **Hinglish** natural language phrasin
 - **Microphone Input:** Real-time voice capture powered by `SpeechRecognition` and `PyAudio`.
 - **Speech Synthesis:** Fast, natural voice feedback powered by `pyttsx3` with non-blocking background thread processing.
 - **Bilingual Understanding:** Seamlessly processes commands spoken in English, Hindi, or conversational Hinglish.
+- Haarsh
 
 ---
 
